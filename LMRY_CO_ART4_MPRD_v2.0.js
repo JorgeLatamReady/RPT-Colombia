@@ -108,6 +108,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           var vendorEntity = getVendorData(arrTemp[3]);
 
           if (vendorEntity != null) {
+            log.debug('viene de journal');
             var vendorDetailData = DatosVendor(arrTemp[3]);
             var taxResults = getTaxResults(arrTemp[1], arrTemp[2]);
 
@@ -128,6 +129,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           }
 
         } else {
+          log.debug('viene de bill o  bill credit');
           var datos = DatosVendor(arrTemp[3]);
 
           dataVendor = [arrTemp[0], datos[3], arrTemp[2], arrTemp[4], datos[0], datos[1], datos[2], arrTemp[8]];
@@ -191,10 +193,10 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       }
       monto_B = redondear(monto_B);
       monto_R = redondear(monto_R);
-      log.debug('vendor', ArrVendor);
+      /*log.debug('vendor', ArrVendor);
       log.debug('monto base sumado', monto_B);
       log.debug('porcentae', por);
-      log.debug('monto retenido sumado', monto_R);
+      log.debug('monto retenido sumado', monto_R);*/
 
       context.write({
         key: context.key,
@@ -396,7 +398,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
             //Nombre de Archivo
             record.setValue({
-              fieldId: 'custrecord_lmry_co_rg_url_file',
+              fieldId: 'custrecord_lmry_co_rg_name',
               value: nameFile
             });
             //Url de Archivo
@@ -663,7 +665,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
               arrAuxiliar[4] = '';
             }
             //id de retencion
-            log.error('no lo veo', objResult[i].getValue(columns[11]));
+            //log.error('no lo veo', objResult[i].getValue(columns[11]));
             if (objResult[i].getValue(columns[11]) != null && objResult[i].getValue(columns[11]) != '- None -') {
               id_retencion = objResult[i].getValue(columns[11]);
             } else {
@@ -1123,7 +1125,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       });
 
       var resultado = datos.run().getRange(0, 1000);
-      log.debug('resultado', resultado);
+      log.debug('resultado vendor', resultado);
       var arrResult = new Array();
 
       if (resultado.length != 0) {
