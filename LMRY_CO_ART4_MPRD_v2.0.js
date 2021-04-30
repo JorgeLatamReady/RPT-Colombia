@@ -1143,6 +1143,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         arrResult.push(resultado[0].getValue(columns[3]));
         //3. codTipoDoc
         arrResult.push(resultado[0].getValue(columns[4]));
+      }else{
+        arrResult = ['','','',''];
       }
 
       return arrResult;
