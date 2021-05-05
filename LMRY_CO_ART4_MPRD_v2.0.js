@@ -72,7 +72,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         var whtJournalLines = getJournalWHT();
         log.debug('whtJournalLines', whtJournalLines);
         //recuerda retornar el arreglosgaaaaa
-        var ArrReturn = whtLines.concat(whtTotal);
+        var ArrReturn = whtLines.concat(whtTotal, whtJournalLines);
         log.error('valor del arreglo de retorno', ArrReturn);
         return ArrReturn;
 
@@ -105,23 +105,26 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         var id_reduce;
 
         if (arrTemp[0] == 'Journal') {
+          //log.debug('entro a journal map');
           var vendorEntity = getVendorData(arrTemp[3]);
 
           if (vendorEntity != null) {
-            log.debug('viene de journal');
-            var vendorDetailData = DatosVendor(arrTemp[3]);
+            //log.debug('viene de journal');
+            var vendorDetailData = getVendorAddressData(arrTemp[3]);
             var taxResults = getTaxResults(arrTemp[1], arrTemp[2]);
 
             if (taxResults.length != 0) {
-              dataVendor = [vendorEntity[0], vendorDetailData[3], vendorEntity[1], vendorEntity[2],
+              log.debug('esta es', arrTemp);
+              dataVendor = [vendorEntity[0], vendorEntity[4], vendorEntity[1], vendorEntity[2],
               vendorDetailData[0], vendorDetailData[1], vendorDetailData[2], vendorEntity[3]];
 
               montoBase = taxResults[0][0];
-              alicuota = taxResults[0][1];
-              montoRetencion = taxResults[0][2];
+              alicuota = taxResults[0][2];
+              montoRetencion = taxResults[0][1];
 
               id_reduce = arrTemp[3] + '|' + alicuota; //ID VENDOR + ALIQUOTA
             }else{
+              //log.debug('No hay taxresult en journal');
               return false;
             }
           }else{
@@ -129,10 +132,10 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           }
 
         } else {
-          log.debug('viene de bill o  bill credit');
-          var datos = DatosVendor(arrTemp[3]);
+          var datos = getVendorAddressData(arrTemp[3]);
+          var vendorEntity = getVendorData(arrTemp[3]);//para obtener Cod. Documento
 
-          dataVendor = [arrTemp[0], datos[3], arrTemp[2], arrTemp[4], datos[0], datos[1], datos[2], arrTemp[8]];
+          dataVendor = [arrTemp[0], vendorEntity[4], arrTemp[2], arrTemp[4], datos[0], datos[1], datos[2], arrTemp[8]];
           montoBase = arrTemp[5];
           alicuota = arrTemp[7];
           montoRetencion = arrTemp[6];
@@ -721,8 +724,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       var arrResult = [];
 
       var savedsearch = search.load({
-        /*LatamReady - CO ART4 WHT Journal*/
-        id: 'customsearch_lmry_co_art4_wht_journal'
+        /*LatamTest - CO ART4 WHT Journal*/
+        id: 'customsearch_test_co_art4_wht_journal'
       });
 
       if (feature_Subsi) {
@@ -767,7 +770,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
       while (!DbolStop) {
         var objResult = searchResult.getRange(intDMinReg, intDMaxReg);
-        log.debug('tamaño de la busqueda', objResult.length);
+        //log.debug('tamaño de la busqueda', objResult.length);
         if (objResult != null) {
 
           if (objResult.length != 1000) {
@@ -996,7 +999,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             label: "4. Impuesto Local Currency"
           }),
           search.createColumn({
-            name: "formulanumeric",
+            name: "formulatext",
             formula: "{custrecord_lmry_accounting_books}",
             label: "5. TC's"
           })
@@ -1026,7 +1029,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             // 0. Base Amount
             var montoBase = objResult[i].getValue(columns[3]);
             if (montoBase != null && montoBase != 0 && montoBase != "- None -") {
-              arr[0] = montoBase;
+              arr[0] = Number(montoBase);
             } else {
               arr[0] = objResult[i].getValue(columns[0]) * exchangeRate;
 
@@ -1034,7 +1037,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             // 1. Retencion
             var impuesto = objResult[i].getValue(columns[4]);
             if (impuesto != null && impuesto != 0 && impuesto != "- None -") {
-              arr[1] = impuesto;
+              arr[1] = Number(impuesto);
             } else {
               arr[1] = objResult[i].getValue(columns[1]) * exchangeRate;
             }
@@ -1063,8 +1066,9 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
       var vendorEntity = search.lookupFields({
         type: search.Type.VENDOR,
-        id: arrTemp[3],
-        columns: ["isperson", "companyname", "firstname", "lastname","vatregnumber", "email", "phone"]
+        id: id_vendor,
+        columns: ["isperson", "companyname", "firstname", "lastname","vatregnumber", "email", "phone",
+      "custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"]
       });
 
       if (vendorEntity != null) {
@@ -1075,10 +1079,11 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           razonSocial = vendorEntity.companyname;
         }
 
-        vendorData.push(razonSocial);
-        vendorData.push(vendorEntity.vatregnumber);
+        vendorData.push(razonSocial);//0
+        vendorData.push(vendorEntity.vatregnumber);//1
         vendorData.push(vendorEntity.email);
         vendorData.push(vendorEntity.phone);
+        vendorData.push(vendorEntity["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"]);//4
 
         return vendorData;
       } else {
@@ -1087,7 +1092,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       }
     }
 
-    function DatosVendor(id_vendor) {
+    function getVendorAddressData(id_vendor) {
       var datos = search.create({
         type: "vendor",
         filters: [
@@ -1115,17 +1120,12 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             name: "custrecord_lmry_addr_prov_id",
             join: "billingAddress",
             label: "Latam - Province ID"
-          }),
-          search.createColumn({
-            name: "formulatext",
-            formula: "{custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name}",
-            label: "Latam - Cod. Document Type"
           })
         ]
       });
 
       var resultado = datos.run().getRange(0, 1000);
-      log.debug('resultado vendor', resultado);
+      //log.debug('resultado vendor', resultado);
       var arrResult = new Array();
 
       if (resultado.length != 0) {
@@ -1141,10 +1141,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         arrResult.push(resultado[0].getValue(columns[2]));
         //2. departamento
         arrResult.push(resultado[0].getValue(columns[3]));
-        //3. codTipoDoc
-        arrResult.push(resultado[0].getValue(columns[4]));
       }else{
-        arrResult = ['','','',''];
+        arrResult = ['','',''];
       }
 
       return arrResult;
