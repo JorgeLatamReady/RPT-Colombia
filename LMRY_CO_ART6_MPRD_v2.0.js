@@ -77,19 +77,480 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
     function getInputData() {
       //try{
-      log.error('parametros', param_Multi + '-' + param_Subsi + '-' + param_Periodo + '-' + param_Anual);
+      log.debug('parametros', param_Multi + '-' + param_Subsi + '-' + param_Periodo + '-' + param_Anual);
 
       var whtLines = getWHTLines();
+      var whtCabecera = getWHTCabecera();
+      var whtTotal = whtLines.concat(whtCabecera);
+      log.debug('data a procesar', whtTotal);
+      return ArrReturn;
 
+      // }catch(err){
+      //     log.error('err', err);
+      //     //libreria.sendMail(LMRY_script, ' [ getInputData ] ' + err);
+      // }
+    }
+    /**
+     * If this entry point is used, the map function is invoked one time for each key/value.
+     *
+     * @param {Object} context
+     * @param {boolean} context.isRestarted - Indicates whether the current invocation represents a restart
+     * @param {number} context.executionNo - Version of the bundle being installed
+     * @param {Iterator} context.errors - This param contains a "iterator().each(parameters)" function
+     * @param {string} context.key - The key to be processed during the current invocation
+     * @param {string} context.value - The value to be processed during the current invocation
+     * @param {function} context.write - This data is passed to the reduce stage
+     *
+     * @since 2016.1
+     */
+    function map(context) {
+      //try{
+      var arrTransaction = new Array();
+      var ArrCustomer = new Array();
+      var arrTemp = JSON.parse(context.value);
 
+      var datos = getCustAddressData(arrTemp[0]);
+      //log.error('campos customer',datos);
+      var addressData = datos.split('|');
+      var entityData = getCustomerData(arrTemp[0]);
 
+      ArrCustomer = [entityData[0], entityData[1], entityData[2], entityData[3], entityData[4], addressData[0],
+        addressData[1], addressData[2]
+      ];
+      id_reduce = arrTemp[0] + '|' + arrTemp[2];//id customer + alicuota
 
-      //Busqueda cabecera
+      context.write({
+        key: id_reduce,
+        value: {
+          Customer: ArrCustomer,
+          Montobase: arrTemp[1],
+          Aliquota: arrTemp[2],
+          MontoRetenido: arrTemp[3]
+        }
+      });
+      // }catch(err){
+      //     log.error('err', err);
+      // }
+    }
 
-      var savedsearch_2 = search.load({
-        id: 'customsearch_lmry_co_art_6_main'
+    /**
+     * If this entry point is used, the reduce function is invoked one time for
+     * each key and list of values provided..
+     *
+     * @param {Object} context
+     * @param {boolean} context.isRestarted - Indicates whether the current invocation of the represents a restart.
+     * @param {number} context.concurrency - The maximum concurrency number when running the map/reduce script.
+     * @param {Date} 0context.datecreated - The time and day when the script began running.
+     * @param {number} context.seconds - The total number of seconds that elapsed during the processing of the script.
+     * @param {number} context.usage - TThe total number of usage units consumed during the processing of the script.
+     * @param {number} context.yields - The total number of yields that occurred during the processing of the script.
+     * @param {Object} context.inputSummary - Object that contains data about the input stage.
+     * @param {Object} context.mapSummary - Object that contains data about the map stage.
+     * @param {Object} context.reduceSummary - Object that contains data about the reduce stage.
+     * @param {Iterator} context.output - This param contains a "iterator().each(parameters)" function
+     *
+     * @since 2016.1
+     */
+
+    function reduce(context) {
+      //log.error('entro en el reduce');
+      var estado;
+      var monto = 0;
+      var ArrCustomer = new Array();
+      var ArrItem = new Array();
+      var monto_B = 0;
+      var monto_R = 0;
+      var por = '';
+      var arreglo = context.values;
+      //log.error('arreglo del map',arreglo);
+      var tamaño = arreglo.length;
+      for (var i = 0; i < tamaño; i++) {
+        var obj = JSON.parse(arreglo[i]);
+        /*if (obj["isError"] == "T") {
+            context.write({
+                key   : context.key,
+                value : obj
+            });
+            return;
+        }*/
+
+        ArrCustomer = obj.Customer;
+
+        monto_B += obj.Montobase;
+        monto_R += obj.MontoRetenido;
+        por = Number(obj.Aliquota); //*10000
+        por = por.toFixed(2);
+        if (por == 0) {
+          por = '0.00'
+        }
+
+      }
+
+      monto_B = redondear(monto_B);
+      monto_R = redondear(monto_R);
+
+      context.write({
+        key: context.key,
+        value: {
+          Customer: ArrCustomer,
+          Montobase: monto_B,
+          Aliquota: por,
+          MontoRetenido: monto_R
+        }
       });
 
+    }
+
+    function summarize(context) {
+
+      try {
+        strReporte = '';
+        //para obtener el año de generacion de reporte
+        if (param_Anual != '' && param_Anual != null) {
+          var periodenddate_temp = search.lookupFields({
+            type: search.Type.ACCOUNTING_PERIOD,
+            id: param_Anual,
+            columns: ['periodname']
+          });
+          //Period EndDate
+          Anual = periodenddate_temp.periodname;
+          Anual = Anual.substring(Anual.length - 4, Anual.length);
+
+          log.error('nombre del año', Anual.length);
+          periodname = periodenddate_temp.periodname;
+
+        } else {
+          var periodenddate_temp = search.lookupFields({
+            type: search.Type.ACCOUNTING_PERIOD,
+            id: param_Periodo,
+            columns: ['enddate', 'periodname']
+          });
+          //Period EndDate
+          periodenddate = periodenddate_temp.enddate;
+          var parsedDateStringAsRawDateObject = format.parse({
+            value: periodenddate,
+            type: format.Type.DATE
+          });
+
+          periodname = periodenddate_temp.periodname;
+          var Anual = parsedDateStringAsRawDateObject.getFullYear();
+          log.error('valor del año', Anual.length);
+        }
+
+        context.output.iterator().each(function(key, value) {
+          var obj = JSON.parse(value);
+          if (obj["isError"] == "T") {
+            errores.push(JSON.stringify(obj["error"]));
+          } else {
+            ArrCustomer = obj.Customer;
+            //log.error('quiero ver como viene',ArrVendor);
+            monto_base = obj.Montobase;
+            MontoRet = obj.MontoRetenido;
+            porc = obj.Aliquota;
+
+            strReporte += Anual + ';' + ArrCustomer[1] + ';' + ArrCustomer[2] + ';' + ArrCustomer[0] + ';' + ArrCustomer[5] + ';' + ArrCustomer[3] + ';' + ArrCustomer[4] + ';' + ArrCustomer[6] + ';' + ArrCustomer[7] + ';' + monto_base + ';' + porc + ';' + MontoRet + '\r\n';
+
+          }
+          return true;
+        });
+        log.debug('strReporte', strReporte);
+
+        //obtener nombre de subsidiaria
+        var configpage = config.load({
+          type: config.Type.COMPANY_INFORMATION
+        });
+
+        if (feature_Subsi) {
+          companyname = ObtainNameSubsidiaria(param_Subsi);
+          companyname = validarAcentos(companyname);
+          companyruc = ObtainFederalIdSubsidiaria(param_Subsi);
+        } else {
+          companyruc = configpage.getValue('employerid');
+          companyname = configpage.getValue('legalname');
+
+        }
+
+        companyruc = companyruc.replace(' ', '');
+        companyruc = QuitaGuion(companyruc);
+
+        if (strReporte == '') {
+          NoData();
+        } else {
+          saveFile(strReporte);
+        }
+
+        //log.error('paso de guardar el archivo',idFile);
+      } catch (err) {
+        log.error('err', err);
+        //libreria.sendMail(LMRY_script, ' [ getInputData ] ' + err);
+      }
+    }
+
+    function saveFile(strReporte) {
+      var folderId = objContext.getParameter({
+        name: 'custscript_lmry_file_cabinet_rg_co'
+      });
+      // Almacena en la carpeta de Archivos Generados
+      if (folderId != '' && folderId != null) {
+        // Extension del archivo
+        if (param_head == 'T') {
+          var fileExt = '.csv';
+          var nameFile = NameFile() + fileExt;
+
+          strCabecera = 'VIGENCIA' + ';' + 'TIPO DE DOCUMENTO' + ';' + 'NUMERO DE DOCUMENTO' + ';' + 'NOMBRE O RAZON SOCIAL' + ';' + 'DIRECCION DE NOTIFICACION' + ';' + 'TELEFONO' + ';' + 'EMAIL' + ';' + 'CODIGO DE MUNICIPIO' + ';' + 'CODIGO DE DEPARTAMENTO' + ';' + 'MONTO PAGO' + ';' + 'TARIFA RETENCION APLICADA' + ';' + 'MONTO RETENCION ANUAL';
+
+          // Crea el archivo
+          var reportFile = fileModulo.create({
+            name: nameFile,
+            fileType: fileModulo.Type.CSV,
+            contents: strCabecera + '\r\n' + strReporte,
+            encoding: fileModulo.Encoding.UTF8,
+            folder: folderId
+          });
+        } else {
+          var fileExt = '.txt';
+          var nameFile = NameFile() + fileExt;
+
+          // Crea el archivo
+          var reportFile = fileModulo.create({
+            name: nameFile,
+            fileType: fileModulo.Type.PLAINTEXT,
+            contents: strReporte,
+            encoding: fileModulo.Encoding.UTF8,
+            folder: folderId
+          });
+        }
+
+        var idFile = reportFile.save();
+
+        var idfile2 = fileModulo.load({
+          id: idFile
+        }); // Trae URL de archivo generado
+
+        // Obtenemo de las prefencias generales el URL de Netsuite (Produccion o Sandbox)
+        var getURL = objContext.getParameter({
+          name: 'custscript_lmry_netsuite_location'
+        });
+        var urlfile = '';
+
+        if (getURL != '' && getURL != '') {
+          urlfile += 'https://' + getURL;
+        }
+
+        urlfile += idfile2.url;
+
+        log.debug({
+          title: 'url',
+          details: urlfile
+        });
+
+        //Genera registro personalizado como log
+        var nombre = search.lookupFields({
+          type: "customrecord_lmry_co_features",
+          id: param_FeatID,
+          columns: ['name']
+        });
+        namereport = nombre.name;
+
+        if (idFile) {
+          var usuarioTemp = runtime.getCurrentUser();
+          var id = usuarioTemp.id;
+          var employeename = search.lookupFields({
+            type: search.Type.EMPLOYEE,
+            id: id,
+            columns: ['firstname', 'lastname']
+          });
+          var usuario = employeename.firstname + ' ' + employeename.lastname;
+
+          if (false) {
+            var record = recordModulo.create({
+              type: 'customrecord_lmry_co_rpt_generator_log',
+            });
+
+            //Nombre de Reporte
+            record.setValue({
+              fieldId: 'custrecord_lmry_co_rg_transaction',
+              value: 'CO - Art 4'
+            });
+
+            //Nombre de Subsidiaria
+            record.setValue({
+              fieldId: 'custrecord_lmry_co_rg_subsidiary',
+              value: companyname
+            });
+
+            //Multibook
+            record.setValue({
+              fieldId: 'custrecord_lmry_co_rg_multibook',
+              value: multibookName
+            });
+
+          } else {
+
+            var record = recordModulo.load({
+              type: 'customrecord_lmry_co_rpt_generator_log',
+              id: param_RecorID
+            });
+
+          }
+
+          //Nombre de Archivo
+          record.setValue({
+            fieldId: 'custrecord_lmry_co_rg_name',
+            value: nameFile
+          });
+          //Url de Archivo
+          record.setValue({
+            fieldId: 'custrecord_lmry_co_rg_url_file',
+            value: urlfile
+          });
+          //Periodo
+          record.setValue({
+            fieldId: 'custrecord_lmry_co_rg_postingperiod',
+            value: periodname
+          });
+          //Creado Por
+          record.setValue({
+            fieldId: 'custrecord_lmry_co_rg_employee',
+            value: usuario
+          });
+
+          var recordId = record.save();
+
+          // Envia mail de conformidad al usuario
+          //libreria.sendrptuserTranslate(namereport, 3, nameFile, language);
+        }
+      } else {
+        log.debug("No se encontro folder");
+      }
+    }
+
+    function redondear(number) {
+      return Math.round(Number(number));
+    }
+
+    function getWHTLines() {
+      var intDMinReg = 0;
+      var intDMaxReg = 1000;
+      var DbolStop = false;
+      //para la busqueda de transacciones
+      var arrReturn = new Array();
+
+      var savedsearch = search.load({
+        /*LatamReady - CO Articulo 6 Line Level*/
+        id: 'customsearch_lmry_co_art_6_line'
+      });
+
+      if (feature_Subsi) {
+        var subsidiaryFilter = search.createFilter({
+          name: 'subsidiary',
+          operator: search.Operator.IS,
+          values: [param_Subsi]
+        });
+        savedsearch.filters.push(subsidiaryFilter);
+      }
+
+      if (param_Anual != null && param_Anual != '') {
+        var periodFilter = search.createFilter({
+          name: 'postingperiod',
+          operator: search.Operator.IS,
+          values: [param_Anual]
+        });
+        savedsearch.filters.push(periodFilter);
+      } else {
+        var periodFilter = search.createFilter({
+          name: 'postingperiod',
+          operator: search.Operator.IS,
+          values: [param_Periodo]
+        });
+        savedsearch.filters.push(periodFilter);
+      }
+      if (hasJobsFeature && !hasAdvancedJobsFeature) {
+        log.error("customermain");
+        var customerColumn = search.createColumn({
+          name: 'formulanumeric',
+          formula: '{customermain.internalid}',
+          summary: 'GROUP'
+        });
+        savedsearch.columns.push(customerColumn);
+      } else if ((!hasJobsFeature && !hasAdvancedJobsFeature) || (!hasJobsFeature && hasAdvancedJobsFeature) || (hasJobsFeature && hasAdvancedJobsFeature)) {
+        log.error("customer");
+        var customerColumn = search.createColumn({
+          name: "formulanumeric",
+          formula: "CASE WHEN NVL({job.internalid},-1) = -1 THEN {customer.internalid} ELSE {job.customer.id} end",
+          summary: "GROUP"
+        });
+        savedsearch.columns.push(customerColumn);
+      }
+
+      var columnaMultibook = search.createColumn({
+        name: 'formulatext',
+        summary: 'Group',
+        formula: "{custrecord_lmry_br_transaction.custrecord_lmry_accounting_books}",
+        label: " Multibook"
+      });
+      savedsearch.columns.push(columnaMultibook);
+      var searchResult = savedsearch.run();
+
+      var auxiliar = '';
+      while (!DbolStop) {
+        var objResult = searchResult.getRange(intDMinReg, intDMaxReg);
+        //log.error('tamaño de la busqueda',objResult.length);
+        if (objResult != null) {
+          if (objResult.length != 1000) {
+            DbolStop = true;
+          }
+
+          for (var i = 0; i < objResult.length; i++) {
+            var columns = objResult[i].columns;
+            var arrAuxiliar = new Array();
+            // 0. id Customer
+            if (objResult[i].getValue(columns[3]) != '' && objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '- None -') {
+              arrAuxiliar[0] = objResult[i].getValue(columns[3]);
+            } else {
+              arrAuxiliar[0] = '';
+            }
+            /*TC MULTIBOOK*/
+            if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -') {
+              var exch_rate_nf = objResult[i].getValue(columns[4]);
+              exch_rate_nf = exchange_rate(exch_rate_nf);
+            } else {
+              exch_rate_nf = 1;
+            }
+            //1. monto pago
+            var monto_pago = objResult[i].getValue(columns[0]) * exch_rate_nf;
+            arrAuxiliar[1] = Number(monto_pago.toFixed(0));
+            //2. tarifa retencion aplicada
+            arrAuxiliar[2] = (objResult[i].getValue(columns[1])) * 10000;
+            //3. monto retencion anual
+            arrAuxiliar[3] = objResult[i].getValue(columns[2]) * exch_rate_nf;
+
+            arrReturn.push(arrAuxiliar);
+          }
+          if (!DbolStop) {
+            intDMinReg = intDMaxReg;
+            intDMaxReg += 1000;
+          }
+        } else {
+          DbolStop = true;
+        }
+      }
+
+      return arrReturn;
+
+    }
+
+    function getWHTCabecera() {
+
+      var arrReturn = new Array();
+      intDMinReg = 0;
+      intDMaxReg = 1000;
+      DbolStop = false;
+
+      var savedsearch_2 = search.load({
+        /*LatamReady - CO Articulo 6 Main Level*/
+        id: 'customsearch_lmry_co_art_6_main'
+      });
 
       if (feature_Subsi) {
         var subsidiaryFilter = search.createFilter({
@@ -167,15 +628,10 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           label: "Exchange Rate"
         });
         savedsearch_2.columns.push(columnaExchangeRateMulti);
-
-
       }
 
       var searchResult = savedsearch_2.run();
       //log.error('segunda busqueda',searchResult);
-      intDMinReg = 0;
-      intDMaxReg = 1000;
-      DbolStop = false;
       while (!DbolStop) {
         var objResult = searchResult.getRange(intDMinReg, intDMaxReg);
         log.error('tamaño de la busqueda', objResult.length);
@@ -183,7 +639,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           if (objResult.length != 1000) {
             DbolStop = true;
           }
-          var contador = 1;
+
           for (var i = 0; i < objResult.length; i++) {
             var columns = objResult[i].columns;
             var arrAuxiliar = new Array();
@@ -246,7 +702,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
 
             //LLenamos los valores en el arreglo
-            ArrReturn.push(arrAuxiliar);
+            arrReturn.push(arrAuxiliar);
           }
           if (!DbolStop) {
             intDMinReg = intDMaxReg;
@@ -257,725 +713,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         }
       }
 
-      log.error('dta Busqueda principal', ArrReturn);
-      return ArrReturn;
-
-      // }catch(err){
-      //     log.error('err', err);
-      //     //libreria.sendMail(LMRY_script, ' [ getInputData ] ' + err);
-      // }
-    }
-
-
-    function getAllLicenses() {
-      var allLicenses = {};
-      var search_features = search.create({
-        type: 'customrecord_lmry_features_by_subsi',
-        filters: [
-          ['custrecord_lmry_features_subsidiary.isinactive', 'is', 'F'],
-          'AND',
-          ['isinactive', 'is', 'F']
-        ],
-        columns: ['custrecord_lmry_features_subsidiary']
-      });
-
-      var aux_feature = [];
-      var features_active = search_features.run().getRange(0, 100);
-      if (features_active && features_active.length) {
-        for (var i = 0; i < features_active.length; i++) {
-          var subsidiary = features_active[i].getValue('custrecord_lmry_features_subsidiary');
-          aux_feature.push(subsidiary);
-        }
-      }
-
-      if (aux_feature.length < 1) {
-        return {};
-      }
-      // var arraysalida = [];
-
-      var urlText = url.resolveScript({
-        scriptId: 'customscript_lmry_get_enable_feat_stlt',
-        deploymentId: 'customdeploy_lmry_get_enable_feat_stlt',
-        returnExternalUrl: true
-      });
-
-      urlText += '&subsi=' + aux_feature.join('|') + '&json=T';
-      var request = https.get({
-        url: urlText
-      });
-      //log.error('getAllLicenses', request.body);
-      var featuresEnabled = request.body;
-      var licensesFeatures;
-      if (featuresEnabled != null && featuresEnabled != '' && featuresEnabled != undefined) {
-        licensesFeatures = JSON.parse(featuresEnabled);
-        var arrayLicenses;
-        for (var aux in licensesFeatures) {
-          arrayLicenses = [];
-          licensesFeatures[aux].map(function(x) {
-            arrayLicenses.push(parseInt(x));
-            return true;
-          });
-          allLicenses[aux] = arrayLicenses;
-        }
-
-      } else {
-        allLicenses = {};
-      }
-      return allLicenses;
-    }
-
-    /**
-     * If this entry point is used, the map function is invoked one time for each key/value.
-     *
-     * @param {Object} context
-     * @param {boolean} context.isRestarted - Indicates whether the current invocation represents a restart
-     * @param {number} context.executionNo - Version of the bundle being installed
-     * @param {Iterator} context.errors - This param contains a "iterator().each(parameters)" function
-     * @param {string} context.key - The key to be processed during the current invocation
-     * @param {string} context.value - The value to be processed during the current invocation
-     * @param {function} context.write - This data is passed to the reduce stage
-     *
-     * @since 2016.1
-     */
-    function map(context) {
-      //try{
-      var arrTransaction = new Array();
-      var ArrCustomer = new Array();
-      var arrTemp = JSON.parse(context.value);
-      //log.debug('getimputdata', arrTemp);
-      //campos del customer
-      datos = DatosCustomer(arrTemp[0]);
-      //log.error('campos customer',datos);
-      datos_d = datos.split('|');
-
-      var customer_campos = search.lookupFields({
-        type: search.Type.CUSTOMER,
-        id: arrTemp[0],
-        columns: ["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name", 'vatregnumber', 'custentity_lmry_digito_verificator', 'isperson', 'firstname', 'lastname', 'companyname', 'address', 'address1', 'address2', 'address.state', 'phone', 'address.custrecord_lmry_addr_city', 'email']
-      });
-
-
-
-
-
-      //3. NOMBRE O RAZÓN SOCIAL
-      var ISperson = customer_campos.isperson;
-
-      var campo3 = '';
-
-      if (ISperson) {
-
-        var customer_campos1 = search.lookupFields({
-          type: search.Type.CUSTOMER,
-          id: arrTemp[0],
-          columns: ['firstname', 'lastname', 'vatregnumber', 'phone', 'email', "custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"]
-        });
-
-        //1.tipo de documento
-        ide = customer_campos1["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"];
-        if (ide != '' && ide != null && ide != 'NaN') {
-          ide = customer_campos1["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"];
-        } else {
-          ide = '';
-        }
-        if (ide == 'CC' || ide == 'CE' || ide == 'TI' || ide == 'NIT' || ide == 'PA') {
-          ide = completar_espacio(3, ide);
-        } else {
-          ide = '';
-        }
-        //log.error('deberia de salir1',ide);
-        var first = customer_campos1.firstname;
-        if (first != '' && first != null && first != 'NaN') {
-          first = customer_campos1.firstname;
-        } else {
-          first = '';
-        }
-
-        var last = customer_campos1.lastname;
-        if (last != '' && last != null && last != 'NaN') {
-          last = customer_campos1.lastname;
-        } else {
-          last = '';
-        }
-
-        campo3 = first + ' ' + last;
-
-
-        var vatregnumber = customer_campos1.vatregnumber;
-
-        if (vatregnumber != '' && vatregnumber != null && vatregnumber != 'NaN') {
-
-          vatregnumber = (customer_campos1.vatregnumber);
-        } else {
-          vatregnumber = '';
-        }
-        var campo2 = QuitaGuion(vatregnumber).substring(0, 11);
-        //log.error('campo2',campo2);
-
-        var campo5 = customer_campos1.phone;
-
-
-        if (campo5 != '' && campo5 != null && campo5 != 'NaN') {
-          campo5 = QuitaGuion(customer_campos1.phone);
-          campo5 = campo5.substring(0, 10);
-
-        } else {
-          campo5 = '';
-        }
-        //6. email
-        var campo6 = customer_campos1.email;
-
-        if (campo6 != '' && campo6 != null && campo6 != 'NaN') {
-          campo6 = (customer_campos1.email);
-        } else {
-          campo6 = '';
-        }
-
-      } else {
-        var customer_campos2 = search.lookupFields({
-          type: search.Type.CUSTOMER,
-          id: arrTemp[0],
-          columns: ['companyname', 'vatregnumber', 'email', 'phone', "custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"]
-        });
-        var raz = customer_campos2.companyname;
-
-        if (raz != '' && raz != null && raz != 'NaN') {
-          raz = customer_campos2.companyname;
-        } else {
-          raz = '';
-        }
-        campo3 = raz;
-
-        //1.tipo de documento
-        ide = customer_campos2["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"];
-        if (ide != '' && ide != null && ide != 'NaN') {
-          ide = customer_campos2["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"];
-        } else {
-          ide = '';
-        }
-        if (ide == 'CC' || ide == 'CE' || ide == 'TI' || ide == 'NIT' || ide == 'PA') {
-          ide = completar_espacio(3, ide);
-        } else {
-          ide = '';
-        }
-        //log.error('deberia de salir2',ide);
-        var vatregnumber = customer_campos2.vatregnumber;
-
-        if (vatregnumber != '' && vatregnumber != null && vatregnumber != 'NaN') {
-
-          vatregnumber = (customer_campos2.vatregnumber);
-        } else {
-          vatregnumber = '';
-        }
-        var campo2 = QuitaGuion(vatregnumber).substring(0, 11);
-        //log.error('campo2',campo2);
-
-        var campo5 = customer_campos2.phone;
-
-
-        if (campo5 != '' && campo5 != null && campo5 != 'NaN') {
-          campo5 = QuitaGuion(customer_campos2.phone);
-          campo5 = campo5.substring(0, 10)
-
-        } else {
-          campo5 = '';
-        }
-        //6. email
-        var campo6 = customer_campos2.email;
-
-        if (campo6 != '' && campo6 != null && campo6 != 'NaN') {
-          campo6 = (customer_campos2.email);
-        } else {
-          campo6 = '';
-        }
-
-      }
-      campo3 = Remplaza_tildes(campo3);
-      campo3 = Valida_caracteres_blanco(campo3);
-      campo3 = campo3.substring(0, 70);
-      //log.error('campo3',campo3);
-      //5. telefono
-
-      /*
-        0. VIGENCIA
-        1. TIPO DE DOCUMENTO
-        2. NÚMERO DE DOCUMENTO
-        3. NOMBRE O RAZÓN SOCIAL
-        4. DIRECCIÓN DE NOTIFICACIÓN
-        5. TELÉFONO
-        6. E-MAIL
-        7. CÓDIGO MUNICIPIO
-        8. CÓDIGO DEPTO
-        9. MONTO PAGO
-        10. TARIFA RETENCIÓN APLICADA
-        11. MONTO RETENCIÓN ANUAL
-        */
-      id_reduce = arrTemp[0] + '|' + arrTemp[2];
-
-      context.write({
-        key: id_reduce,
-        value: {
-          Customer: [campo3, ide, campo2, campo5, campo6, datos_d[0], datos_d[1], datos_d[2]],
-          Montobase: arrTemp[1],
-          Aliquota: arrTemp[2],
-          MontoRetenido: arrTemp[3]
-        }
-      });
-      // }catch(err){
-      //     log.error('err', err);
-      // }
-    }
-
-    /**
-     * If this entry point is used, the reduce function is invoked one time for
-     * each key and list of values provided..
-     *
-     * @param {Object} context
-     * @param {boolean} context.isRestarted - Indicates whether the current invocation of the represents a restart.
-     * @param {number} context.concurrency - The maximum concurrency number when running the map/reduce script.
-     * @param {Date} 0context.datecreated - The time and day when the script began running.
-     * @param {number} context.seconds - The total number of seconds that elapsed during the processing of the script.
-     * @param {number} context.usage - TThe total number of usage units consumed during the processing of the script.
-     * @param {number} context.yields - The total number of yields that occurred during the processing of the script.
-     * @param {Object} context.inputSummary - Object that contains data about the input stage.
-     * @param {Object} context.mapSummary - Object that contains data about the map stage.
-     * @param {Object} context.reduceSummary - Object that contains data about the reduce stage.
-     * @param {Iterator} context.output - This param contains a "iterator().each(parameters)" function
-     *
-     * @since 2016.1
-     */
-
-    function reduce(context) {
-      //log.error('entro en el reduce');
-      var estado;
-      var monto = 0;
-      var ArrCustomer = new Array();
-      var ArrItem = new Array();
-      var monto_B = 0;
-      var monto_R = 0;
-      var por = '';
-      var arreglo = context.values;
-      //log.error('arreglo del map',arreglo);
-      var tamaño = arreglo.length;
-      for (var i = 0; i < tamaño; i++) {
-        var obj = JSON.parse(arreglo[i]);
-        /*if (obj["isError"] == "T") {
-            context.write({
-                key   : context.key,
-                value : obj
-            });
-            return;
-        }*/
-
-        ArrCustomer = obj.Customer;
-
-        monto_B += obj.Montobase;
-        monto_R += obj.MontoRetenido;
-        por = Number(obj.Aliquota); //*10000
-        por = por.toFixed(2);
-        if (por == 0) {
-          por = '0.00'
-        }
-        //    if(por.length>5){
-        //        por= completar_cero(5,por);
-        //    }
-
-      }
-
-      monto_B = redondear(monto_B);
-      monto_R = redondear(monto_R);
-
-      //log.error('vendor',ArrCustomer);
-      //log.error('monto base sumado',monto_B);
-      // log.error('porcentaje',por);
-      //log.error('monto retenido sumado',monto_R);
-
-      context.write({
-        key: context.key,
-        value: {
-          Customer: ArrCustomer,
-          Montobase: monto_B,
-          Aliquota: por,
-          MontoRetenido: monto_R
-        }
-      });
-
-    }
-
-    function redondear(number) {
-      return Math.round(Number(number));
-    }
-
-    function summarize(context) {
-
-      try {
-        strReporte = '';
-        //para obtener el año de generacion de reporte
-        if (param_Anual != '' && param_Anual != null) {
-          var periodenddate_temp = search.lookupFields({
-            type: search.Type.ACCOUNTING_PERIOD,
-            id: param_Anual,
-            columns: ['periodname']
-          });
-          //Period EndDate
-          Anual = periodenddate_temp.periodname;
-          Anual = Anual.substring(Anual.length - 4, Anual.length);
-
-          log.error('nombre del año', Anual.length);
-          periodname = periodenddate_temp.periodname;
-
-        } else {
-          var periodenddate_temp = search.lookupFields({
-            type: search.Type.ACCOUNTING_PERIOD,
-            id: param_Periodo,
-            columns: ['enddate', 'periodname']
-          });
-          //Period EndDate
-          periodenddate = periodenddate_temp.enddate;
-          var parsedDateStringAsRawDateObject = format.parse({
-            value: periodenddate,
-            type: format.Type.DATE
-          });
-
-          periodname = periodenddate_temp.periodname;
-          var Anual = parsedDateStringAsRawDateObject.getFullYear();
-          log.error('valor del año', Anual.length);
-        }
-        var salto = '\r\n';
-        context.output.iterator().each(function(key, value) {
-          var obj = JSON.parse(value);
-          if (obj["isError"] == "T") {
-            errores.push(JSON.stringify(obj["error"]));
-          } else {
-            ArrCustomer = obj.Customer;
-            //log.error('quiero ver como viene',ArrVendor);
-            monto_base = obj.Montobase;
-            MontoRet = obj.MontoRetenido;
-            porc = obj.Aliquota;
-            /*
-                            0. VIGENCIA
-                            1. TIPO DE DOCUMENTO
-                            2. NÚMERO DE DOCUMENTO
-                            3. NOMBRE O RAZÓN SOCIAL
-                            4. DIRECCIÓN DE NOTIFICACIÓN
-                            5. TELÉFONO
-                            6. E-MAIL
-                            7. CÓDIGO MUNICIPIO
-                            8. CÓDIGO DEPTO
-                            9. MONTO PAGO
-                            10. TARIFA RETENCIÓN APLICADA
-                            11. MONTO RETENCIÓN ANUAL
-                            Customer :[arrTemp[0],ide,campo2,campo5,campo6,datos_d[0],datos_d[1],datos_d[2]],
-                            */
-
-            strReporte += Anual + ';' + ArrCustomer[1] + ';' + ArrCustomer[2] + ';' + ArrCustomer[0] + ';' + ArrCustomer[5] + ';' + ArrCustomer[3] + ';' + ArrCustomer[4] + ';' + ArrCustomer[6] + ';' + ArrCustomer[7] + ';' + monto_base + ';' + porc + ';' + MontoRet + salto;
-
-          }
-          return true;
-        });
-        log.error('strReporte', strReporte);
-
-        //obtener nombre de subsidiaria
-        var configpage = config.load({
-          type: config.Type.COMPANY_INFORMATION
-        });
-
-        if (feature_Subsi) {
-          companyname = ObtainNameSubsidiaria(param_Subsi);
-          companyname = validarAcentos(companyname);
-          companyruc = ObtainFederalIdSubsidiaria(param_Subsi);
-        } else {
-          companyruc = configpage.getValue('employerid');
-          companyname = configpage.getValue('legalname');
-
-        }
-
-        companyruc = companyruc.replace(' ', '');
-        companyruc = QuitaGuion(companyruc);
-
-        if (strReporte == '') {
-          NoData();
-        } else {
-          var folderId = objContext.getParameter({
-            name: 'custscript_lmry_file_cabinet_rg_co'
-          });
-
-          // Almacena en la carpeta de Archivos Generados
-          if (folderId != '' && folderId != null) {
-            // Extension del archivo
-            if (param_head == 'T') {
-              log.error('entro cabecera', 'entro');
-              var fileExt = '.csv';
-              var nameFile = NameFile() + fileExt;
-
-              strCabecera = 'VIGENCIA' + ';' + 'TIPO DE DOCUMENTO' + ';' + 'NUMERO DE DOCUMENTO' + ';' + 'NOMBRE O RAZON SOCIAL' + ';' + 'DIRECCION DE NOTIFICACION' + ';' + 'TELEFONO' + ';' + 'EMAIL' + ';' + 'CODIGO DE MUNICIPIO' + ';' + 'CODIGO DE DEPARTAMENTO' + ';' + 'MONTO PAGO' + ';' + 'TARIFA RETENCION APLICADA' + ';' + 'MONTO RETENCION ANUAL';
-
-              // Crea el archivo
-              var reportFile = fileModulo.create({
-                name: nameFile,
-                fileType: fileModulo.Type.CSV,
-                contents: strCabecera + '\r\n' + strReporte,
-                encoding: fileModulo.Encoding.UTF8,
-                folder: folderId
-              });
-            } else {
-              log.error('entro txt', 'entro');
-              var fileExt = '.txt';
-              var nameFile = NameFile() + fileExt;
-
-              // Crea el archivo
-              var reportFile = fileModulo.create({
-                name: nameFile,
-                fileType: fileModulo.Type.PLAINTEXT,
-                contents: strReporte,
-                encoding: fileModulo.Encoding.UTF8,
-                folder: folderId
-              });
-            }
-
-            var idFile = reportFile.save();
-
-            var idfile2 = fileModulo.load({
-              id: idFile
-            }); // Trae URL de archivo generado
-
-            // Obtenemo de las prefencias generales el URL de Netsuite (Produccion o Sandbox)
-            var getURL = objContext.getParameter({
-              name: 'custscript_lmry_netsuite_location'
-            });
-            var urlfile = '';
-
-            if (getURL != '' && getURL != '') {
-              urlfile += 'https://' + getURL;
-            }
-
-            urlfile += idfile2.url;
-
-            log.debug({
-              title: 'url',
-              details: urlfile
-            });
-
-            //Genera registro personalizado como log
-
-            var nombre = search.lookupFields({
-              type: "customrecord_lmry_co_features",
-              id: param_FeatID,
-              columns: ['name']
-            });
-            namereport = nombre.name;
-
-            if (idFile) {
-              var usuarioTemp = runtime.getCurrentUser();
-              var id = usuarioTemp.id;
-              var employeename = search.lookupFields({
-                type: search.Type.EMPLOYEE,
-                id: id,
-                columns: ['firstname', 'lastname']
-              });
-              var usuario = employeename.firstname + ' ' + employeename.lastname;
-              if (false) {
-                var record = recordModulo.create({
-                  type: 'customrecord_lmry_co_rpt_generator_log',
-                });
-                //Nombre de Archivo
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_url_file',
-                  value: nameFile
-                });
-
-                //Url de Archivo
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_url_file',
-                  value: urlfile
-                });
-
-                //Nombre de Reporte
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_transaction',
-                  value: 'CO - Art 4'
-                });
-
-                //Nombre de Subsidiaria
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_subsidiary',
-                  value: companyname
-                });
-
-                //Periodo
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_postingperiod',
-                  value: periodname
-                });
-                //Multibook
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_multibook',
-                  value: multibookName
-                });
-                //Creado Por
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_employee',
-                  value: usuario
-                });
-
-
-                var recordId = record.save();
-                // Envia mail de conformidad al usuario
-                //libreria.sendrptuserTranslate(namereport, 3, NameFile, language);
-              } else {
-                log.error('entro aqui');
-                var record = recordModulo.load({
-                  type: 'customrecord_lmry_co_rpt_generator_log',
-                  id: param_RecorID
-                });
-
-                //Nombre de Archivo
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_name',
-                  value: nameFile
-                });
-                //Url de Archivo
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_url_file',
-                  value: urlfile
-                });
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_postingperiod',
-                  value: periodname
-                });
-                //Creado Por
-                record.setValue({
-                  fieldId: 'custrecord_lmry_co_rg_employee',
-                  value: usuario
-                });
-                var recordId = record.save();
-
-                // Envia mail de conformidad al usuario
-                //libreria.sendrptuserTranslate(namereport, 3, NameFile, language);
-              }
-
-            }
-          }
-        }
-
-        //log.error('paso de guardar el archivo',idFile);
-      } catch (err) {
-        log.error('err', err);
-        //libreria.sendMail(LMRY_script, ' [ getInputData ] ' + err);
-      }
-    }
-
-    function getWHTLines(){
-      var intDMinReg = 0;
-      var intDMaxReg = 1000;
-      var DbolStop = false;
-      //para la busqueda de transacciones
-      var ArrReturn = new Array();
-
-      var savedsearch = search.load({
-        id: 'customsearch_lmry_co_art_6_line'
-      });
-
-      if (feature_Subsi) {
-        var subsidiaryFilter = search.createFilter({
-          name: 'subsidiary',
-          operator: search.Operator.IS,
-          values: [param_Subsi]
-        });
-        savedsearch.filters.push(subsidiaryFilter);
-      }
-
-      if (param_Anual != null && param_Anual != '') {
-        var periodFilter = search.createFilter({
-          name: 'postingperiod',
-          operator: search.Operator.IS,
-          values: [param_Anual]
-        });
-        savedsearch.filters.push(periodFilter);
-      } else {
-        var periodFilter = search.createFilter({
-          name: 'postingperiod',
-          operator: search.Operator.IS,
-          values: [param_Periodo]
-        });
-        savedsearch.filters.push(periodFilter);
-      }
-      if (hasJobsFeature && !hasAdvancedJobsFeature) {
-        log.error("customermain");
-        var customerColumn = search.createColumn({
-          name: 'formulanumeric',
-          formula: '{customermain.internalid}',
-          summary: 'GROUP'
-        });
-        savedsearch.columns.push(customerColumn);
-      } else if ((!hasJobsFeature && !hasAdvancedJobsFeature) || (!hasJobsFeature && hasAdvancedJobsFeature) || (hasJobsFeature && hasAdvancedJobsFeature)) {
-        log.error("customer");
-        var customerColumn = search.createColumn({
-          name: "formulanumeric",
-          formula: "CASE WHEN NVL({job.internalid},-1) = -1 THEN {customer.internalid} ELSE {job.customer.id} end",
-          summary: "GROUP"
-        });
-        savedsearch.columns.push(customerColumn);
-      }
-
-      var columnaMultibook = search.createColumn({
-        name: 'formulatext',
-        summary: 'Group',
-        formula: "{custrecord_lmry_br_transaction.custrecord_lmry_accounting_books}",
-        label: " Multibook"
-      });
-      savedsearch.columns.push(columnaMultibook);
-      var searchResult = savedsearch.run();
-
-      var auxiliar = '';
-      while (!DbolStop) {
-        var objResult = searchResult.getRange(intDMinReg, intDMaxReg);
-        //log.error('tamaño de la busqueda',objResult.length);
-        if (objResult != null) {
-          if (objResult.length != 1000) {
-            DbolStop = true;
-          }
-          var contador = 1;
-          for (var i = 0; i < objResult.length; i++) {
-            var columns = objResult[i].columns;
-            var arrAuxiliar = new Array();
-            // 0. id Customer
-            if (objResult[i].getValue(columns[3]) != '' && objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '- None -') {
-              arrAuxiliar[0] = objResult[i].getValue(columns[3]);
-            } else {
-              arrAuxiliar[0] = '';
-            }
-
-            //1.MULTIBOOK
-            if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -') {
-              var exch_rate_nf = objResult[i].getValue(columns[4]);
-              exch_rate_nf = exchange_rate(exch_rate_nf);
-            } else {
-              exch_rate_nf = 1;
-            }
-            //2. monto pago
-
-            var monto_pago = objResult[i].getValue(columns[0]) * exch_rate_nf;
-            arrAuxiliar[1] = Number(monto_pago.toFixed(0));
-            //3. tarifa retencion aplicada
-            arrAuxiliar[2] = (objResult[i].getValue(columns[1])) * 10000;
-            //4. monto retencion anual
-            arrAuxiliar[3] = objResult[i].getValue(columns[2]) * exch_rate_nf;
-
-
-            ArrReturn.push(arrAuxiliar);
-          }
-          if (!DbolStop) {
-            intDMinReg = intDMaxReg;
-            intDMaxReg += 1000;
-          }
-        } else {
-          DbolStop = true;
-        }
-      }
-
-      return ArrReturn;
-
+      return arrReturn;
     }
 
     function NoData() {
@@ -1086,7 +824,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       return s;
     }
 
-
     function completar_cero(long, valor) {
       var length = ('' + valor).length;
       if (length <= long) {
@@ -1119,8 +856,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         return valor;
       }
     }
-
-
 
     function ObtainNameSubsidiaria(subsidiary) {
       try {
@@ -1207,8 +942,73 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       return nameFile;
     }
 
+    function getCustomerData(idCustomer) {
 
-    function DatosCustomer(id_customer) {
+      var customerEntity = search.lookupFields({
+        type: search.Type.CUSTOMER,
+        id: arrTemp[0],
+        columns: ['isperson', 'firstname', 'lastname', 'vatregnumber', 'phone', 'email', "custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"]
+      });
+
+      //1.tipo de documento
+      var ide = customerEntity["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"];
+      if (ide == 'CC' || ide == 'CE' || ide == 'TI' || ide == 'NIT' || ide == 'PA') {
+        ide = completar_espacio(3, ide);
+      } else {
+        ide = '';
+      }
+      //2
+      var vatregnumber = customerEntity.vatregnumber;
+      if (vatregnumber == '' || vatregnumber == null || vatregnumber == 'NaN') {
+        vatregnumber = '';
+      }
+      var campo2 = QuitaGuion(vatregnumber).substring(0, 11);
+      //log.error('campo2',campo2);
+      var campo3 = '';
+      if (customerEntity.isperson) {
+        var first = customerEntity.firstname;
+        if (first == '' || first == null || first == 'NaN') {
+          first = '';
+        }
+
+        var last = customerEntity.lastname;
+        if (last == '' || last == null || last == 'NaN') {
+          last = '';
+        }
+
+        campo3 = first + ' ' + last;
+      } else {
+        var raz = customer_campos2.companyname;
+        if (raz == '' || raz == null || raz == 'NaN') {
+          raz = '';
+        }
+
+        campo3 = raz;
+      }
+      campo3 = Remplaza_tildes(campo3);
+      campo3 = Valida_caracteres_blanco(campo3);
+      campo3 = campo3.substring(0, 70);
+
+      //5. telefono
+      var campo5 = customerEntity.phone;
+      if (campo5 != '' && campo5 != null && campo5 != 'NaN') {
+        campo5 = QuitaGuion(customerEntity.phone);
+        campo5 = campo5.substring(0, 10);
+      } else {
+        campo5 = '';
+      }
+      //6. email
+      var campo6 = customerEntity.email;
+      if (campo6 == '' || campo6 == null || campo6 == 'NaN') {
+        campo6 = '';
+      }
+
+      var arrData = [campo3, ide, campo2, campo5, campo6];
+
+      return arrData;
+    }
+
+    function getCustAddressData(id_customer) {
       var datos = search.create({
         type: "customer",
         filters: [
@@ -1258,9 +1058,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         departamento = '';
       }
 
-
       return direccion + '|' + municipio + '|' + departamento;
-
     }
 
     function exchange_rate(exchangerate) {
