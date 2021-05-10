@@ -81,9 +81,11 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
       var whtLines = getWHTLines();
       var whtCabecera = getWHTCabecera();
-      var whtTotal = whtLines.concat(whtCabecera);
+      var whtJournal = getWHTJournal();
+
+      var whtTotal = whtLines.concat(whtCabecera, whtJournal);
       log.debug('data a procesar', whtTotal);
-      return ArrReturn;
+      return whtTotal;
 
       // }catch(err){
       //     log.error('err', err);
@@ -104,33 +106,73 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
      * @since 2016.1
      */
     function map(context) {
-      //try{
-      var arrTransaction = new Array();
-      var ArrCustomer = new Array();
-      var arrTemp = JSON.parse(context.value);
+      try {
+        var ArrCustomer = new Array();
+        var arrTemp = JSON.parse(context.value);
+        var montoBase = 0;
+        var alicuota = 0;
+        var retencion = 0;
 
-      var datos = getCustAddressData(arrTemp[0]);
-      //log.error('campos customer',datos);
-      var addressData = datos.split('|');
-      var entityData = getCustomerData(arrTemp[0]);
+        if (arrTemp[0] == 'Journal') {
+          var entityData = getCustomerData(arrTemp[3]);
 
-      ArrCustomer = [entityData[0], entityData[1], entityData[2], entityData[3], entityData[4], addressData[0],
-        addressData[1], addressData[2]
-      ];
-      id_reduce = arrTemp[0] + '|' + arrTemp[2];//id customer + alicuota
+          if (entityData != null) {
+            var addressData = getCustAddressData(arrTemp[3]);
+            addressData = addressData.split('|');
 
-      context.write({
-        key: id_reduce,
-        value: {
-          Customer: ArrCustomer,
-          Montobase: arrTemp[1],
-          Aliquota: arrTemp[2],
-          MontoRetenido: arrTemp[3]
+            var taxResults = getTaxResults(arrTemp[1], arrTemp[2]);
+
+            if (taxResults.length != 0) {
+              log.debug('entityData',entityData);
+              montoBase = taxResults[0][0];
+              alicuota = taxResults[0][2];
+              retencion = taxResults[0][1];
+
+              id_reduce = arrTemp[3] + '|' + alicuota; //ID VENDOR + ALIQUOTA
+
+              ArrCustomer = [entityData[0], entityData[1], entityData[2], entityData[3], entityData[4], addressData[0],
+                addressData[1], addressData[2]
+              ];
+
+            } else {
+              //log.debug('No hay taxresult en journal');
+              return false;
+            }
+
+          } else {
+            return false;
+          }
+
+        } else {
+          //log.debug('arrTemp[0]',arrTemp[0]);
+          var entityData = getCustomerData(arrTemp[0]);
+          //log.debug('entityData',entityData);
+          var addressData = getCustAddressData(arrTemp[0]);
+          addressData = addressData.split('|');
+
+          var montoBase = arrTemp[1];
+          var alicuota = arrTemp[2];
+          var retencion = arrTemp[3];
+
+          ArrCustomer = [entityData[0], entityData[1], entityData[2], entityData[3], entityData[4], addressData[0],
+            addressData[1], addressData[2]
+          ];
+
+          id_reduce = arrTemp[0] + '|' + arrTemp[2]; //id customer + alicuota
         }
-      });
-      // }catch(err){
-      //     log.error('err', err);
-      // }
+
+        context.write({
+          key: id_reduce,
+          value: {
+            Customer: ArrCustomer,
+            Montobase: montoBase,
+            Aliquota: alicuota,
+            MontoRetenido: retencion
+          }
+        });
+      } catch (err) {
+        log.error('err', err);
+      }
     }
 
     /**
@@ -286,6 +328,110 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       }
     }
 
+    function getTaxResults(transactionID, lineUniqueKey) {
+      var DbolStop = false;
+      var intDMinReg = 0;
+      var intDMaxReg = 1000;
+      var ArrReturn = [];
+
+      var savedsearch = search.create({
+        type: "customrecord_lmry_br_transaction",
+        filters: [
+          ["custrecord_lmry_br_transaction", "is", transactionID],
+          "AND",
+          ["custrecord_lmry_lineuniquekey", "equalto", lineUniqueKey],
+          "AND",
+          ["custrecord_lmry_br_type", "is", "ReteICA"]
+        ],
+        columns: [
+          search.createColumn({
+            name: "formulanumeric",
+            formula: "{custrecord_lmry_base_amount}",
+            label: "0. Base Amount"
+          }),
+          search.createColumn({
+            name: "formulanumeric",
+            formula: "{custrecord_lmry_br_total}",
+            label: "1. Imposto"
+          }),
+          search.createColumn({
+            name: "formulanumeric",
+            formula: "{custrecord_lmry_br_percent}",
+            label: "2. Percentage"
+          }),
+          search.createColumn({
+            name: "formulanumeric",
+            formula: "{custrecord_lmry_base_amount_local_currc}",
+            label: "3. Base Amount Local Currency"
+          }),
+          search.createColumn({
+            name: "formulanumeric",
+            formula: "{custrecord_lmry_amount_local_currency}",
+            label: "4. Impuesto Local Currency"
+          }),
+          search.createColumn({
+            name: "formulatext",
+            formula: "{custrecord_lmry_accounting_books}",
+            label: "5. TC's"
+          })
+        ]
+      });
+
+      var searchresult = savedsearch.run();
+
+      while (!DbolStop) {
+        var objResult = searchresult.getRange(intDMinReg, intDMaxReg);
+
+        if (objResult != null) {
+
+          if (objResult.length != 1000) {
+            DbolStop = true;
+          }
+
+          var intLength = objResult.length;
+
+          for (var i = 0; i < intLength; i++) {
+            var columns = objResult[i].columns;
+            var arr = new Array();
+
+            //TC
+            var exchangeRate = exchange_rate(objResult[i].getValue(columns[5]));
+
+            // 0. Base Amount
+            var montoBase = objResult[i].getValue(columns[3]);
+            if (montoBase != null && montoBase != 0 && montoBase != "- None -") {
+              arr[0] = Number(montoBase);
+            } else {
+              arr[0] = objResult[i].getValue(columns[0]) * exchangeRate;
+
+            }
+            // 1. Retencion
+            var impuesto = objResult[i].getValue(columns[4]);
+            if (impuesto != null && impuesto != 0 && impuesto != "- None -") {
+              arr[1] = Number(impuesto);
+            } else {
+              arr[1] = objResult[i].getValue(columns[1]) * exchangeRate;
+            }
+
+            // 2. Percent
+            arr[2] = Number(objResult[i].getValue(columns[2])) * 10000;
+
+            ArrReturn.push(arr);
+          }
+
+          if (!DbolStop) {
+            intDMinReg = intDMaxReg;
+            intDMaxReg += 1000;
+          }
+
+        } else {
+          DbolStop = true;
+        }
+      }
+
+      return ArrReturn;
+    }
+
     function saveFile(strReporte) {
       var folderId = objContext.getParameter({
         name: 'custscript_lmry_file_cabinet_rg_co'
@@ -429,6 +575,86 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       return Math.round(Number(number));
     }
 
+    function getWHTJournal() {
+      var intDMinReg = 0;
+      var intDMaxReg = 1000;
+      var DbolStop = false;
+      var arrResult = new Array();
+
+      var savedsearch = search.load({
+        /*LatamTest - CO ART4 WHT Journal*/
+        id: 'customsearch_test_co_art4_wht_journal'
+      });
+
+      if (feature_Subsi) {
+        var subsidiaryFilter = search.createFilter({
+          name: 'subsidiary',
+          operator: search.Operator.IS,
+          values: [param_Subsi]
+        });
+        savedsearch.filters.push(subsidiaryFilter);
+      }
+
+      if (param_Anual != null && param_Anual != '') {
+        var periodFilter = search.createFilter({
+          name: 'postingperiod',
+          operator: search.Operator.IS,
+          values: [param_Anual]
+        });
+        savedsearch.filters.push(periodFilter);
+      } else {
+        var periodFilter = search.createFilter({
+          name: 'postingperiod',
+          operator: search.Operator.IS,
+          values: [param_Periodo]
+        });
+        savedsearch.filters.push(periodFilter);
+      }
+
+      if (feature_Multi) {
+        var multibookFilter = search.createFilter({
+          name: 'accountingbook',
+          join: 'accountingtransaction',
+          operator: search.Operator.IS,
+          values: [param_Multi]
+        });
+        savedsearch.filters.push(multibookFilter);
+      }
+
+      var searchResult = savedsearch.run();
+
+      while (!DbolStop) {
+        var objResult = searchResult.getRange(intDMinReg, intDMaxReg);
+        //log.debug('tamaño de la busqueda', objResult.length);
+        if (objResult != null) {
+
+          if (objResult.length != 1000) {
+            DbolStop = true;
+          }
+
+          for (var i = 0; i < objResult.length; i++) {
+            var columns = objResult[i].columns;
+            var arrAuxiliar = new Array();
+
+            for (var j = 0; j < columns.length; j++) {
+              arrAuxiliar[j] = objResult[i].getValue(columns[j]);
+            }
+            //LLenamos los valores en el arreglo
+            arrResult.push(arrAuxiliar);
+          }
+
+          if (!DbolStop) {
+            intDMinReg = intDMaxReg;
+            intDMaxReg += 1000;
+          }
+        } else {
+          DbolStop = true;
+        }
+      }
+
+      return arrResult;
+    }
+
     function getWHTLines() {
       var intDMinReg = 0;
       var intDMaxReg = 1000;
@@ -492,7 +718,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       savedsearch.columns.push(columnaMultibook);
       var searchResult = savedsearch.run();
 
-      var auxiliar = '';
       while (!DbolStop) {
         var objResult = searchResult.getRange(intDMinReg, intDMaxReg);
         //log.error('tamaño de la busqueda',objResult.length);
@@ -537,7 +762,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       }
 
       return arrReturn;
-
     }
 
     function getWHTCabecera() {
@@ -946,66 +1170,73 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
       var customerEntity = search.lookupFields({
         type: search.Type.CUSTOMER,
-        id: arrTemp[0],
-        columns: ['isperson', 'firstname', 'lastname', 'vatregnumber', 'phone', 'email', "custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"]
+        id: idCustomer,
+        columns: ['isperson', 'companyname', 'firstname', 'lastname', 'vatregnumber', 'phone', 'email', "custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"]
       });
 
-      //1.tipo de documento
-      var ide = customerEntity["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"];
-      if (ide == 'CC' || ide == 'CE' || ide == 'TI' || ide == 'NIT' || ide == 'PA') {
-        ide = completar_espacio(3, ide);
-      } else {
-        ide = '';
-      }
-      //2
-      var vatregnumber = customerEntity.vatregnumber;
-      if (vatregnumber == '' || vatregnumber == null || vatregnumber == 'NaN') {
-        vatregnumber = '';
-      }
-      var campo2 = QuitaGuion(vatregnumber).substring(0, 11);
-      //log.error('campo2',campo2);
-      var campo3 = '';
-      if (customerEntity.isperson) {
-        var first = customerEntity.firstname;
-        if (first == '' || first == null || first == 'NaN') {
-          first = '';
+      //log.debug('customerEntity',customerEntity);
+
+      if (customerEntity != null && JSON.stringify(customerEntity) != '{}') {
+        //1.tipo de documento
+        var ide = customerEntity["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"];
+        if (ide == 'CC' || ide == 'CE' || ide == 'TI' || ide == 'NIT' || ide == 'PA') {
+          ide = completar_espacio(3, ide);
+        } else {
+          ide = '';
+        }
+        //2
+        var vatregnumber = customerEntity.vatregnumber;
+        if (vatregnumber == '' || vatregnumber == null || vatregnumber == 'NaN') {
+          vatregnumber = '';
+        }
+        var campo2 = QuitaGuion(vatregnumber).substring(0, 11);
+        //log.error('campo2',campo2);
+        var campo3 = '';
+        if (customerEntity.isperson) {
+          var first = customerEntity.firstname;
+          if (first == '' || first == null || first == 'NaN') {
+            first = '';
+          }
+
+          var last = customerEntity.lastname;
+          if (last == '' || last == null || last == 'NaN') {
+            last = '';
+          }
+
+          campo3 = first + ' ' + last;
+        } else {
+          var raz = customerEntity.companyname;
+          if (raz == '' || raz == null || raz == 'NaN') {
+            raz = '';
+          }
+
+          campo3 = raz;
+        }
+        campo3 = Remplaza_tildes(campo3);
+        campo3 = Valida_caracteres_blanco(campo3);
+        campo3 = campo3.substring(0, 70);
+
+        //5. telefono
+        var campo5 = customerEntity.phone;
+        if (campo5 != '' && campo5 != null && campo5 != 'NaN') {
+          campo5 = QuitaGuion(customerEntity.phone);
+          campo5 = campo5.substring(0, 10);
+        } else {
+          campo5 = '';
+        }
+        //6. email
+        var campo6 = customerEntity.email;
+        if (campo6 == '' || campo6 == null || campo6 == 'NaN') {
+          campo6 = '';
         }
 
-        var last = customerEntity.lastname;
-        if (last == '' || last == null || last == 'NaN') {
-          last = '';
-        }
+        var arrData = [campo3, ide, campo2, campo5, campo6];
 
-        campo3 = first + ' ' + last;
+        return arrData;
       } else {
-        var raz = customer_campos2.companyname;
-        if (raz == '' || raz == null || raz == 'NaN') {
-          raz = '';
-        }
-
-        campo3 = raz;
-      }
-      campo3 = Remplaza_tildes(campo3);
-      campo3 = Valida_caracteres_blanco(campo3);
-      campo3 = campo3.substring(0, 70);
-
-      //5. telefono
-      var campo5 = customerEntity.phone;
-      if (campo5 != '' && campo5 != null && campo5 != 'NaN') {
-        campo5 = QuitaGuion(customerEntity.phone);
-        campo5 = campo5.substring(0, 10);
-      } else {
-        campo5 = '';
-      }
-      //6. email
-      var campo6 = customerEntity.email;
-      if (campo6 == '' || campo6 == null || campo6 == 'NaN') {
-        campo6 = '';
+        return null;
       }
 
-      var arrData = [campo3, ide, campo2, campo5, campo6];
-
-      return arrData;
     }
 
     function getCustAddressData(id_customer) {
