@@ -724,8 +724,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       var arrResult = [];
 
       var savedsearch = search.load({
-        /*LatamTest - CO ART4 WHT Journal*/
-        id: 'customsearch_test_co_art4_wht_journal'
+        /*LatamReady - CO ART4 WHT Journal*/
+        id: 'customsearch_lmry_co_art4_wht_journal'
       });
 
       if (feature_Subsi) {
@@ -1071,7 +1071,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       "custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"]
       });
 
-      if (vendorEntity != null) {
+      if (vendorEntity != null && JSON.stringify(vendorEntity) != '{}') {
         var razonSocial;
         if (vendorEntity.isperson) {
           razonSocial = vendorEntity.firstname + ' ' + vendorEntity.lastname;
