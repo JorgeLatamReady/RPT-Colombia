@@ -68,6 +68,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         log.debug('empezo a correr la bsuqueda', param_Multi + '-' + param_Subsi + '-' + param_Periodo + '-' + param_Anual);
 
         var whtLines = getLinesWHT();
+        log.debug('whtLines', whtLines);
         var whtTotal = getTotalWHT();
         var whtJournalLines = getJournalWHT();
         log.debug('whtJournalLines', whtJournalLines);
@@ -124,7 +125,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
               id_reduce = arrTemp[3] + '|' + alicuota; //ID VENDOR + ALIQUOTA
             }else{
-              //log.debug('No hay taxresult en journal');
+              log.debug('No hay taxresult en journal', vendorEntity);
+              log.debug('No hay taxresult con esto', arrTemp);
               return false;
             }
           }else{
@@ -142,6 +144,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
           id_reduce = arrTemp[3] + '|' + arrTemp[7]; //ID VENDOR + ALIQUOTA
         }
+        log.debug('id_reduce',id_reduce);
 
         context.write({
           key: id_reduce,
@@ -522,11 +525,17 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             } else {
               exch_rate_nf = 1;
             }
-            //6. monto base
-            arrAuxiliar[5] = objResult[i].getValue(columns[5]) * exch_rate_nf;
 
+            var typeTransaction = objResult[i].getValue(columns[10]);
+            var factorSigno = 1;
+            if (typeTransaction == 'VendCred') {//Bill Credit (Devolucion de Retencion)
+              factorSigno = -1;
+            }
+
+            //6. monto base
+            arrAuxiliar[5] = objResult[i].getValue(columns[5]) * exch_rate_nf * factorSigno;
             //7. monto retenido
-            arrAuxiliar[6] = objResult[i].getValue(columns[7]) * exch_rate_nf;
+            arrAuxiliar[6] = objResult[i].getValue(columns[7]) * exch_rate_nf * factorSigno;
             //8. porcentaje
             arrAuxiliar[7] = Number(objResult[i].getValue(columns[6])) * 10000;
             //9. telefono
@@ -584,6 +593,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         });
         savedsearch_2.filters.push(periodFilter);
       }
+      //12
       var columna_tipo_rete = search.createColumn({
         name: "custrecord_lmry_wht_salebase",
         join: "CUSTBODY_LMRY_CO_RETEICA",
@@ -591,7 +601,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         label: "Sale WHT Base"
       });
       savedsearch_2.columns.push(columna_tipo_rete);
-
+      //13
       var exchangerate = search.createColumn({
         name: "exchangerate",
         summary: "GROUP",
@@ -607,7 +617,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           values: [param_Multi]
         });
         savedsearch_2.filters.push(multibookFilter);
-
+        //14
         var exchange_rate_multi = search.createColumn({
           name: "exchangerate",
           join: "accountingTransaction",
@@ -615,7 +625,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           label: "Exchange Rate"
         });
         savedsearch_2.columns.push(exchange_rate_multi);
-
       }
 
       var searchResult = savedsearch_2.run();
@@ -668,33 +677,41 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
               arrAuxiliar[4] = '';
             }
             //id de retencion
-            //log.error('no lo veo', objResult[i].getValue(columns[11]));
-            if (objResult[i].getValue(columns[11]) != null && objResult[i].getValue(columns[11]) != '- None -') {
-              id_retencion = objResult[i].getValue(columns[11]);
+            //log.error('no lo veo', objResult[i].getValue(columns[12]));
+            if (objResult[i].getValue(columns[12]) != null && objResult[i].getValue(columns[12]) != '- None -') {
+              id_retencion = objResult[i].getValue(columns[12]);
             } else {
               id_retencion = '';
             }
+
+            var typeTransaction = objResult[i].getValue(columns[11]);
+            var factorSigno = 1;
+            if (typeTransaction == 'VendCred') {//Bill Credit (Devolucion de Retencion)
+              factorSigno = -1;
+            }
+
             //6. monto base
             if (feature_Multi) {
               if (id_retencion == 1) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[6])) / Number(objResult[i].getValue(columns[12])) * Number(objResult[i].getValue(columns[13]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[6])) / Number(objResult[i].getValue(columns[13])) * Number(objResult[i].getValue(columns[14]));
               } else if (id_retencion == 2) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[8])) / Number(objResult[i].getValue(columns[12])) * Number(objResult[i].getValue(columns[13]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[8])) / Number(objResult[i].getValue(columns[13])) * Number(objResult[i].getValue(columns[14]));
               } else if (id_retencion == 3) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[7])) / Number(objResult[i].getValue(columns[12])) * Number(objResult[i].getValue(columns[13]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[7])) / Number(objResult[i].getValue(columns[13])) * Number(objResult[i].getValue(columns[14]));
               }
             } else {
               if (id_retencion == 1) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[6])); //)/Number(objResult[i].getValue(columns[12]))*Number(objResult[i].getValue(columns[13]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[6])); //)/Number(objResult[i].getValue(columns[13]))*Number(objResult[i].getValue(columns[14]));
               } else if (id_retencion == 2) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[8])); //)/Number(objResult[i].getValue(columns[12]))*Number(objResult[i].getValue(columns[13]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[8])); //)/Number(objResult[i].getValue(columns[13]))*Number(objResult[i].getValue(columns[14]));
               } else if (id_retencion == 3) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[7])); //)/Number(objResult[i].getValue(columns[12]))*Number(objResult[i].getValue(columns[13]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[7])); //)/Number(objResult[i].getValue(columns[13]))*Number(objResult[i].getValue(columns[14]));
               }
             }
+            arrAuxiliar[5] = arrAuxiliar[5] * factorSigno;
 
             //7. monto retenido
-            arrAuxiliar[6] = Number(objResult[i].getValue(columns[9]));
+            arrAuxiliar[6] = Number(objResult[i].getValue(columns[9])) * factorSigno;
             //8. porcentaje
             arrAuxiliar[7] = objResult[i].getValue(columns[10]);
             //5. telefono
@@ -1078,11 +1095,38 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         } else {
           razonSocial = vendorEntity.companyname;
         }
+        razonSocial = ValidarCaracteres_Especiales(razonSocial);
+        razonSocial = Valida_colombia(razonSocial);
+        razonSocial = razonSocial.substring(0, 70);
 
         vendorData.push(razonSocial);//0
-        vendorData.push(vendorEntity.vatregnumber);//1
-        vendorData.push(vendorEntity.email);
-        vendorData.push(vendorEntity.phone);
+
+        var vatReg = vendorEntity.vatregnumber;
+        if (vatReg != '' && vatReg != null && vatReg != '- None -') {
+          vatReg = Valida_Codigo(vatReg);
+          vatReg = vatReg.substring(0, 11);
+        }else{
+          vatReg = '';
+        }
+        vendorData.push(vatReg);//1
+
+        var email = vendorEntity.email;
+        if (email != '' && email != null && email != '- None -') {
+          email = email.substring(0, 70);
+        }else{
+          email = '';
+        }
+        vendorData.push(email);//2
+
+        var phone = vendorEntity.phone;
+        if (phone != '' && phone != null && phone != '- None -') {
+          phone = ValidaGuion(phone);
+          phone = phone.substring(0, 10)
+        }else{
+          phone = '';
+        }
+        vendorData.push(phone);//3
+
         vendorData.push(vendorEntity["custentity_lmry_sunat_tipo_doc_id.custrecord_lmry_co_idtype_name"]);//4
 
         return vendorData;
