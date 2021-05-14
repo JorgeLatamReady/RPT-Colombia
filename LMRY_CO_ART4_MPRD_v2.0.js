@@ -145,6 +145,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           id_reduce = arrTemp[3] + '|' + arrTemp[7]; //ID VENDOR + ALIQUOTA
         }
         log.debug('id_reduce',id_reduce);
+        log.debug('arrTemp',arrTemp);
+        log.debug('montoBase',montoBase);
 
         context.write({
           key: id_reduce,
@@ -565,7 +567,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       var arrResult = [];
 
       var savedsearch_2 = search.load({
-        /*LatamReady - CO ART4 Totales */
+        /*LatamReady - CO ART4 Totales*/
         id: 'customsearch_lmry_co_art4_totales'
       });
 
@@ -595,7 +597,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       }
       //12
       var columna_tipo_rete = search.createColumn({
-        name: "custrecord_lmry_wht_salebase",
+        name: "custrecord_lmry_wht_purcbase",
         join: "CUSTBODY_LMRY_CO_RETEICA",
         summary: "GROUP",
         label: "Sale WHT Base"

@@ -582,8 +582,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       var arrResult = new Array();
 
       var savedsearch = search.load({
-        /*LatamTest - CO ART4 WHT Journal*/
-        id: 'customsearch_test_co_art4_wht_journal'
+        /*LatamReady - CO ART4 WHT Journal*/
+        id: 'customsearch_lmry_co_art4_wht_journal'
       });
 
       if (feature_Subsi) {
@@ -885,17 +885,13 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             //1. monto pago
             if (feature_Multi) {
               if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '' && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN') {
-
                 arrAuxiliar[1] = Number(objResult[i].getValue(columns[0])) * Number(objResult[i].getValue(columns[5])) / Number(objResult[i].getValue(columns[4]));
-
               } else {
                 arrAuxiliar[1] = 0.00;
               }
             } else {
               if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '' && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN') {
-
                 arrAuxiliar[1] = Number(objResult[i].getValue(columns[0]));
-
               } else {
                 arrAuxiliar[1] = 0.00;
               }
