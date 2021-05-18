@@ -70,11 +70,12 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         var whtLines = getLinesWHT();
         log.debug('whtLines', whtLines);
         var whtTotal = getTotalWHT();
+        log.debug('whtTotal', whtTotal);
         var whtJournalLines = getJournalWHT();
         log.debug('whtJournalLines', whtJournalLines);
         //recuerda retornar el arreglosgaaaaa
         var ArrReturn = whtLines.concat(whtTotal, whtJournalLines);
-        log.error('valor del arreglo de retorno', ArrReturn);
+        //log.error('valor del arreglo de retorno', ArrReturn);
         return ArrReturn;
 
       } catch (err) {
@@ -115,7 +116,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             var taxResults = getTaxResults(arrTemp[1], arrTemp[2]);
 
             if (taxResults.length != 0) {
-              log.debug('esta es', arrTemp);
               dataVendor = [vendorEntity[0], vendorEntity[4], vendorEntity[1], vendorEntity[2],
               vendorDetailData[0], vendorDetailData[1], vendorDetailData[2], vendorEntity[3]];
 
@@ -126,7 +126,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
               id_reduce = arrTemp[3] + '|' + alicuota; //ID VENDOR + ALIQUOTA
             }else{
               log.debug('No hay taxresult en journal', vendorEntity);
-              log.debug('No hay taxresult con esto', arrTemp);
+              log.debug('Data sin tax results', arrTemp);
               return false;
             }
           }else{
@@ -144,9 +144,9 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
           id_reduce = arrTemp[3] + '|' + arrTemp[7]; //ID VENDOR + ALIQUOTA
         }
-        log.debug('id_reduce',id_reduce);
+        /*log.debug('id_reduce',id_reduce);
         log.debug('arrTemp',arrTemp);
-        log.debug('montoBase',montoBase);
+        log.debug('montoBase',montoBase);*/
 
         context.write({
           key: id_reduce,
@@ -528,16 +528,10 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
               exch_rate_nf = 1;
             }
 
-            var typeTransaction = objResult[i].getValue(columns[10]);
-            var factorSigno = 1;
-            if (typeTransaction == 'VendCred') {//Bill Credit (Devolucion de Retencion)
-              factorSigno = -1;
-            }
-
             //6. monto base
-            arrAuxiliar[5] = objResult[i].getValue(columns[5]) * exch_rate_nf * factorSigno;
+            arrAuxiliar[5] = objResult[i].getValue(columns[5]) * exch_rate_nf;
             //7. monto retenido
-            arrAuxiliar[6] = objResult[i].getValue(columns[7]) * exch_rate_nf * factorSigno;
+            arrAuxiliar[6] = objResult[i].getValue(columns[7]) * exch_rate_nf;
             //8. porcentaje
             arrAuxiliar[7] = Number(objResult[i].getValue(columns[6])) * 10000;
             //9. telefono
@@ -603,13 +597,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         label: "Sale WHT Base"
       });
       savedsearch_2.columns.push(columna_tipo_rete);
-      //13
-      var exchangerate = search.createColumn({
-        name: "exchangerate",
-        summary: "GROUP",
-        label: "Exchange Rate"
-      });
-      savedsearch_2.columns.push(exchangerate);
 
       if (feature_Multi) {
         var multibookFilter = search.createFilter({
@@ -619,14 +606,30 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           values: [param_Multi]
         });
         savedsearch_2.filters.push(multibookFilter);
-        //14
-        var exchange_rate_multi = search.createColumn({
-          name: "exchangerate",
-          join: "accountingTransaction",
-          summary: "GROUP",
-          label: "Exchange Rate"
+        //13
+        var grossAmount = search.createColumn({
+          name: "formulanumeric",
+          formula: "NVL({accountingtransaction.debitamount},0) - NVL({accountingtransaction.creditamount},0)",
+          summary: "SUM",
+          label: "Gross Amt Multibook"
         });
-        savedsearch_2.columns.push(exchange_rate_multi);
+        savedsearch_2.columns.push(grossAmount);
+        //14
+        var taxAmount = search.createColumn({
+          name: "formulanumeric",
+          formula: "CASE WHEN {taxline} = 'T' THEN NVL({accountingtransaction.debitamount},0) - NVL({accountingtransaction.creditamount},0) ELSE 0 END",
+          summary: "SUM",
+          label: "Tax Amt Multibook"
+        });
+        savedsearch_2.columns.push(taxAmount);
+        //15
+        var netAmount = search.createColumn({
+          name: "formulanumeric",
+          formula: "CASE WHEN {taxline} = 'T' THEN 0 ELSE NVL({accountingtransaction.debitamount},0) - NVL({accountingtransaction.creditamount},0) END",
+          summary: "SUM",
+          label: "Net Amt Multibook"
+        });
+        savedsearch_2.columns.push(netAmount);
       }
 
       var searchResult = savedsearch_2.run();
@@ -686,34 +689,26 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
               id_retencion = '';
             }
 
-            var typeTransaction = objResult[i].getValue(columns[11]);
-            var factorSigno = 1;
-            if (typeTransaction == 'VendCred') {//Bill Credit (Devolucion de Retencion)
-              factorSigno = -1;
-            }
-
             //6. monto base
             if (feature_Multi) {
               if (id_retencion == 1) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[6])) / Number(objResult[i].getValue(columns[13])) * Number(objResult[i].getValue(columns[14]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[13]));
               } else if (id_retencion == 2) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[8])) / Number(objResult[i].getValue(columns[13])) * Number(objResult[i].getValue(columns[14]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[15]));
               } else if (id_retencion == 3) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[7])) / Number(objResult[i].getValue(columns[13])) * Number(objResult[i].getValue(columns[14]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[14]));
               }
             } else {
               if (id_retencion == 1) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[6])); //)/Number(objResult[i].getValue(columns[13]))*Number(objResult[i].getValue(columns[14]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[6]));
               } else if (id_retencion == 2) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[8])); //)/Number(objResult[i].getValue(columns[13]))*Number(objResult[i].getValue(columns[14]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[8]));
               } else if (id_retencion == 3) {
-                arrAuxiliar[5] = Number(objResult[i].getValue(columns[7])); //)/Number(objResult[i].getValue(columns[13]))*Number(objResult[i].getValue(columns[14]));
+                arrAuxiliar[5] = Number(objResult[i].getValue(columns[7]));
               }
             }
-            arrAuxiliar[5] = arrAuxiliar[5] * factorSigno;
-
             //7. monto retenido
-            arrAuxiliar[6] = Number(objResult[i].getValue(columns[9])) * factorSigno;
+            arrAuxiliar[6] = Number(objResult[i].getValue(columns[9]));
             //8. porcentaje
             arrAuxiliar[7] = objResult[i].getValue(columns[10]);
             //5. telefono
@@ -1213,6 +1208,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       } else {
         final = auxiliar[1];
       }
+
+      final = Number(final.replace(' ',''));
       return final;
     }
 
