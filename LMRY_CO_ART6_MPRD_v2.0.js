@@ -583,7 +583,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
       var savedsearch = search.load({
         /*LatamReady - CO ART4 WHT Journal*/
-        id: 'customsearch_lmry_co_art4_wht_journal'
+        id: 'customsearch_test_co_art4_wht_journal'
       });
 
       if (feature_Subsi) {
@@ -773,7 +773,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
       var savedsearch_2 = search.load({
         /*LatamReady - CO Articulo 6 Main Level*/
-        id: 'customsearch_lmry_co_art_6_main'
+        id: 'customsearch_lmry_co_art_6_main_qa'
       });
 
       if (feature_Subsi) {
@@ -808,6 +808,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       //     });
       //       savedsearch_2.columns.push(columna_tipo_rete);
 
+      //4
       if (hasJobsFeature && !hasAdvancedJobsFeature) {
         log.error("customermain");
         var customerColumn = search.createColumn({
@@ -826,15 +827,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         savedsearch_2.columns.push(customerColumn);
       }
 
-      //columan4
-      var columnaExchangeRate = search.createColumn({
-        name: 'exchangerate',
-        summary: 'Group',
-        label: "Exchange Rate"
-      });
-      savedsearch_2.columns.push(columnaExchangeRate);
-
-
       if (feature_Multi) {
         var multibookFilter = search.createFilter({
           name: 'accountingbook',
@@ -843,15 +835,14 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           values: [param_Multi]
         });
         savedsearch_2.filters.push(multibookFilter);
-
-        //columan5
-        var columnaExchangeRateMulti = search.createColumn({
-          name: 'exchangerate',
-          summary: 'Group',
-          join: "accountingTransaction",
-          label: "Exchange Rate"
+        //5
+        var customerColumn = search.createColumn({
+          name: "formulanumeric",
+          formula: "NVL({accountingTransaction.creditamount},0) - NVL({accountingTransaction.debitamount},0)",
+          summary: "GROUP",
+          label: "Monto base multibook"
         });
-        savedsearch_2.columns.push(columnaExchangeRateMulti);
+        savedsearch_2.columns.push(customerColumn);
       }
 
       var searchResult = savedsearch_2.run();
@@ -868,9 +859,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             var columns = objResult[i].columns;
             var arrAuxiliar = new Array();
             // 0. ID customer
-
-            if (objResult[i].getValue(columns[3]) != '' && objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '- None -') {
-              arrAuxiliar[0] = objResult[i].getValue(columns[3]);
+            if (objResult[i].getValue(columns[4]) != '' && objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -') {
+              arrAuxiliar[0] = objResult[i].getValue(columns[4]);
             } else {
               arrAuxiliar[0] = '';
             }
@@ -882,10 +872,11 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             //   }else{
             //     exch_rate_nf = 1;
             //   }
-            //1. monto pago
+
+            //1. monto base
             if (feature_Multi) {
-              if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '' && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN') {
-                arrAuxiliar[1] = Number(objResult[i].getValue(columns[0])) * Number(objResult[i].getValue(columns[5])) / Number(objResult[i].getValue(columns[4]));
+              if (objResult[i].getValue(columns[5]) != null && objResult[i].getValue(columns[5]) != '' && objResult[i].getValue(columns[5]) != '- None -' && objResult[i].getValue(columns[5]) != 'NaN') {
+                arrAuxiliar[1] = Number(objResult[i].getValue(columns[5]));
               } else {
                 arrAuxiliar[1] = 0.00;
               }
@@ -896,13 +887,10 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
                 arrAuxiliar[1] = 0.00;
               }
             }
-
-
             //3. tarifa retencion aplicada
             arrAuxiliar[2] = (objResult[i].getValue(columns[1]));
             //4. monto retencion anual
             arrAuxiliar[3] = Number(objResult[i].getValue(columns[2]));
-
 
             //  //id de retencion
             //  log.error('no lo veo',objResult[i].getValue(columns[4]));
@@ -919,7 +907,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             //  }else if (id_retencion == 3) {
             //    arrAuxiliar[5] = objResult[i].getValue(columns[7]);
             //  }
-
 
             //LLenamos los valores en el arreglo
             arrReturn.push(arrAuxiliar);
