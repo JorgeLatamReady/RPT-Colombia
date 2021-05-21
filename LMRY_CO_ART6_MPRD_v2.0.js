@@ -76,21 +76,23 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
     }).substring(0, 2);
 
     function getInputData() {
-      //try{
-      log.debug('parametros', param_Multi + '-' + param_Subsi + '-' + param_Periodo + '-' + param_Anual);
+      try {
+        log.debug('parametros', param_Multi + '-' + param_Subsi + '-' + param_Periodo + '-' + param_Anual);
 
-      var whtLines = getWHTLines();
-      var whtCabecera = getWHTCabecera();
-      var whtJournal = getWHTJournal();
+        var whtLines = getWHTLines();
+        log.debug('whtLines', whtLines);
+        var whtCabecera = getWHTCabecera();
+        log.debug('whtCabecera', whtCabecera);
+        var whtJournal = getWHTJournal();
+        log.debug('whtJournal', whtJournal);
+        var whtTotal = whtLines.concat(whtCabecera, whtJournal);
 
-      var whtTotal = whtLines.concat(whtCabecera, whtJournal);
-      log.debug('data a procesar', whtTotal);
-      return whtTotal;
+        return whtTotal;
 
-      // }catch(err){
-      //     log.error('err', err);
-      //     //libreria.sendMail(LMRY_script, ' [ getInputData ] ' + err);
-      // }
+      } catch (err) {
+        log.error('err', err);
+        libreria.sendMail(LMRY_script, ' [ getInputData ] ' + err);
+      }
     }
     /**
      * If this entry point is used, the map function is invoked one time for each key/value.
@@ -123,7 +125,6 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             var taxResults = getTaxResults(arrTemp[1], arrTemp[2]);
 
             if (taxResults.length != 0) {
-              log.debug('entityData',entityData);
               montoBase = taxResults[0][0];
               alicuota = taxResults[0][2];
               retencion = taxResults[0][1];
@@ -144,15 +145,14 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
           }
 
         } else {
-          //log.debug('arrTemp[0]',arrTemp[0]);
           var entityData = getCustomerData(arrTemp[0]);
           //log.debug('entityData',entityData);
           var addressData = getCustAddressData(arrTemp[0]);
           addressData = addressData.split('|');
 
-          var montoBase = arrTemp[1];
-          var alicuota = arrTemp[2];
-          var retencion = arrTemp[3];
+          montoBase = arrTemp[1];
+          alicuota = arrTemp[2];
+          retencion = arrTemp[3];
 
           ArrCustomer = [entityData[0], entityData[1], entityData[2], entityData[3], entityData[4], addressData[0],
             addressData[1], addressData[2]
@@ -839,7 +839,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
         var customerColumn = search.createColumn({
           name: "formulanumeric",
           formula: "NVL({accountingTransaction.creditamount},0) - NVL({accountingTransaction.debitamount},0)",
-          summary: "GROUP",
+          summary: "SUM",
           label: "Monto base multibook"
         });
         savedsearch_2.columns.push(customerColumn);
