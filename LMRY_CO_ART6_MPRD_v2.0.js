@@ -583,7 +583,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
       var savedsearch = search.load({
         /*LatamReady - CO ART4 WHT Journal*/
-        id: 'customsearch_test_co_art4_wht_journal'
+        id: 'customsearch_lmry_co_art4_wht_journal'
       });
 
       if (feature_Subsi) {
@@ -773,7 +773,7 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
 
       var savedsearch_2 = search.load({
         /*LatamReady - CO Articulo 6 Main Level*/
-        id: 'customsearch_lmry_co_art_6_main_qa'
+        id: 'customsearch_lmry_co_art_6_main'
       });
 
       if (feature_Subsi) {
