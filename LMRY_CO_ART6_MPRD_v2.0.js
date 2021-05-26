@@ -231,15 +231,17 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       monto_B = redondear(monto_B);
       monto_R = redondear(monto_R);
 
-      context.write({
-        key: context.key,
-        value: {
-          Customer: ArrCustomer,
-          Montobase: monto_B,
-          Aliquota: por,
-          MontoRetenido: monto_R
-        }
-      });
+      if (monto_B != 0 && monto_R != 0) {
+        context.write({
+          key: context.key,
+          value: {
+            Customer: ArrCustomer,
+            Montobase: monto_B,
+            Aliquota: por,
+            MontoRetenido: monto_R
+          }
+        });
+      }
 
     }
 
@@ -742,9 +744,8 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
             } else {
               exch_rate_nf = 1;
             }
-            //1. monto pago
-            var monto_pago = objResult[i].getValue(columns[0]) * exch_rate_nf;
-            arrAuxiliar[1] = Number(monto_pago.toFixed(0));
+            //1. monto base
+            arrAuxiliar[1] = objResult[i].getValue(columns[0]) * exch_rate_nf;
             //2. tarifa retencion aplicada
             arrAuxiliar[2] = (objResult[i].getValue(columns[1])) * 10000;
             //3. monto retencion anual

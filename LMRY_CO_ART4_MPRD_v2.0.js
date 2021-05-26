@@ -206,16 +206,18 @@ define(['N/search', 'N/log', "N/config", 'require', 'N/file', 'N/runtime', 'N/qu
       log.debug('porcentae', por);
       log.debug('monto retenido sumado', monto_R);*/
 
-      context.write({
-        key: context.key,
-        value: {
-          Vendor: ArrVendor,
-          Montobase: monto_B,
-          Aliquota: por,
-          MontoRetenido: monto_R
-        }
-      });
-
+      if (monto_B != 0 && monto_R != 0) {
+        context.write({
+          key: context.key,
+          value: {
+            Vendor: ArrVendor,
+            Montobase: monto_B,
+            Aliquota: por,
+            MontoRetenido: monto_R
+          }
+        });
+      }
+      
     }
 
     function summarize(context) {
