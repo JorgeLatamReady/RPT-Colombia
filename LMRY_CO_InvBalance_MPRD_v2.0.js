@@ -24,34 +24,40 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
      */
 
     var objContext = runtime.getCurrentScript();
+    var LMRY_script = "LMRY_CO_InvBalance_MPRD_v2.0.js";
 
-    var LMRY_script = "LMRY_CO_BalCompTerceros_MPRDC.js";
+    var paramMultibook = objContext.getParameter({
+      name: 'custscript_test_invbal_multibook'
+    });
+    var paramRecordID = objContext.getParameter({
+      name: 'custscript_test_invbal_logid'
+    });
+    var paramSubsidy = objContext.getParameter({
+      name: 'custscript_test_invbal_subsi'
+    });
+    var paramPeriod = objContext.getParameter({
+      name: 'custscript_test_invbal_periodo'
+    });
+    var paramPUC = objContext.getParameter({
+      name: 'custscript_test_invbal_lastpuc'
+    });
 
-    var paramSubsidy = null;
-    var paramPeriod = null;
-    var paramMultibook = null;
-    var paramRecordID = null;
-    var paramPUC = null;
-
-    var ArrYears = new Array();
-    var ArrProcessedYears = new Array();
     var ArrData = new Array();
-    var ArrDataRestante = new Array();
-    var ArrDataRestanteSpecific = new Array();
-    var ArrDataActual = new Array();
-    var ArrDataAcualSpecific = new Array();
-    var ArrAllPeriods = new Array();
-    var ArrYearPeriods = new Array();
-    var ArrEntidades = new Array();
 
     var periodYearIni;
     var periodMonthIni;
-    var periodIniIsAdjust = false;
-    var periodstartdateIni;
+    var periodIsAdjust = false;
+    var periodStartDate;
 
-    var featuresubs;
-    var featurejobs;
-    var feamultibook;
+    var featuresubs = runtime.isFeatureInEffect({
+      feature: "SUBSIDIARIES"
+    });
+    var feamultibook = runtime.isFeatureInEffect({
+      feature: "MULTIBOOK"
+    });
+    var featurejobs = runtime.isFeatureInEffect({
+      feature: "JOBS"
+    });
 
     var entityCustomer = false;
     var entityVendor = false;
@@ -67,9 +73,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         log.debug('getInputData', 'getInputData');
         ParametrosYFeatures();
         // Obtiene años ya procesados
-        ArrProcessedYears = ObtenerAñosProcesados();
-        // Obtiene los periodos Fiscal Year
-        ArrYears = ObtenerAñosFiscales();
+        var ArrProcessedYears = ObtenerAñosProcesados();
+        // Obtiene los periodos Fiscal Year (desde el inicio hasta un año antes del periodo de generación)
+        var ArrYears = ObtenerAñosFiscales();
 
         OrdenarAños(ArrYears);
         OrdenarAños(ArrProcessedYears);
@@ -86,76 +92,30 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
           if (!flag) {
             var arrTemporal = new Array();
-            var arrTemporalSpecific = new Array();
-            arrTemporal = ObtenerData(ArrYears[i][0], true, false, true);
+            arrTemporal = ObtenerData(ArrYears[i][0], false); //si filtra por parametro PUC
+            var arrTemporalSpecific = new Array(); //obtiene specific transactions
 
-            var configpage = config.load({
-              type: config.Type.COMPANY_INFORMATION
-            });
-
-            if (featuresubs || featuresubs == 'T') {
-
-            } else {
-              var idProce = configpage.getValue('id');
-            }
-
-            //Obtiene Specific Transactions
             if (feamultibook) {
-              arrTemporalSpecific = ObtenerData(ArrYears[i][0], true, true, true);
+              arrTemporalSpecific = ObtenerData(ArrYears[i][0], true); //no filtra por parametro puc
               Array.prototype.push.apply(arrTemporal, arrTemporalSpecific);
             }
 
             if (arrTemporal.length != 0) {
-              arrTemporal = AgruparPorCuenta(arrTemporal);
+              arrTemporal = AgruparPorCuenta(arrTemporal); //agrupa por cuenta y entity
 
               for (var x = 0; x < arrTemporal.length; x++) {
                 arrTemporal[x][4] = ArrYears[i][1];
-
                 if (featuresubs) {
                   arrTemporal[x][5] = paramSubsidy;
                 }
-
                 ArrData.push(arrTemporal[x]);
               }
             }
 
-            var record = recordModulo.create({
-              type: 'customrecord_lmry_co_terceros_procesados',
-            });
-
-            if (featuresubs || featuresubs == 'T') {
-              record.setValue({
-                fieldId: 'custrecord_lmry_co_subsi_procesado',
-                value: '' + paramSubsidy
-              });
-            } else {
-              record.setValue({
-                fieldId: 'custrecord_lmry_co_subsi_procesado',
-                value: '' + idProce
-              });
-            }
-
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_year_procesado',
-              value: ArrYears[i][1]
-            });
-
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_puc_procesado',
-              value: '' + paramPUC
-            });
-
-            if (feamultibook || feamultibook == 'T') {
-              record.setValue({
-                fieldId: 'custrecord_lmry_co_multibook_procesado',
-                value: '' + paramMultibook
-              });
-            }
-
-            record.save();
+            //actualizarThirdProc(ArrYears[i][1]);
           }
         }
-        //log.debug('ArrData',ArrData);
+        log.debug('ArrData', ArrData);
         return ArrData;
 
       } catch (err) {
@@ -179,9 +139,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
      */
     function map(context) {
       try {
-        paramPUC = objContext.getParameter({
-          name: 'custscript_lmry_terceros_mprdc_lastpuc'
-        });
 
         if (paramPUC == '' || paramPUC == null) {
           paramPUC = 1;
@@ -189,128 +146,16 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
         var arrTemp = JSON.parse(context.value);
 
-        var record = recordModulo.create({
-          type: 'customrecord_lmry_co_terceros_data',
-        });
-
         var account_lookup = search.lookupFields({
           type: search.Type.ACCOUNT,
           id: Number(arrTemp[0]),
           columns: ['custrecord_lmry_co_puc_d6_id']
         });
 
-        if (((account_lookup.custrecord_lmry_co_puc_d6_id)[0].text).charAt(0) == paramPUC) {
+        var firtsDigitPUC = ((account_lookup.custrecord_lmry_co_puc_d6_id)[0].text).charAt(0);
 
-          // 7. PUC 6
-          record.setValue({
-            fieldId: 'custrecord_lmry_co_terceros_puc6',
-            value: '' + (account_lookup.custrecord_lmry_co_puc_d6_id)[0].text
-          });
-
-          // var json_account = {};
-
-          // if(account_lookup != null){
-          //     json_account.puc6 = account_lookup.custrecord_lmry_co_puc_d6_id;
-          //     json_account.desc6 = account_lookup.custrecord_lmry_co_puc_d6_description;
-          //     json_account.puc4 = account_lookup.custrecord_lmry_co_puc_d4_id;
-          //     json_account.desc4 = account_lookup.custrecord_lmry_co_puc_d4_description;
-          //     json_account.puc2 = account_lookup.custrecord_lmry_co_puc_d2_id;
-          //     json_account.desc2 = account_lookup.custrecord_lmry_co_puc_d2_description;
-          //     json_account.puc1 = account_lookup.custrecord_lmry_co_puc_d1_id;
-          //     json_account.desc1 = account_lookup.custrecord_lmry_co_puc_d1_description;
-          // }
-
-          // arrTemp[0] = JSON.stringify(json_account);
-
-          // 0. Account
-          record.setValue({
-            fieldId: 'custrecord_lmry_co_terceros_account',
-            value: arrTemp[0]
-          });
-
-          // 1. Debit
-          if (arrTemp[1] != null && arrTemp[1] != '') {
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_terceros_debit',
-              value: arrTemp[1]
-            });
-          } else {
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_terceros_debit',
-              value: 0
-            });
-          }
-
-          // 2. Credit
-          if (arrTemp[2] != null && arrTemp[2] != '') {
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_terceros_credit',
-              value: arrTemp[2]
-            });
-          } else {
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_terceros_credit',
-              value: 0
-            });
-          }
-
-          // 3. Entity
-          var json_entity = {};
-
-          var flag_entity = ObtenerEntidad(arrTemp[3]);
-
-          if (flag_entity) {
-            json_entity.name = entity_name;
-
-            json_entity.nit = entity_nit;
-
-            json_entity.internalid = arrTemp[3];
-
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_terceros_entity',
-              value: JSON.stringify(json_entity)
-            });
-          }
-
-          // 4. Year
-          record.setValue({
-            fieldId: 'custrecord_lmry_co_terceros_year',
-            value: arrTemp[4]
-          });
-
-          feamultibook = runtime.isFeatureInEffect({
-            feature: "MULTIBOOK"
-          });
-
-          // 5. Multibook
-          if (feamultibook || feamultibook == 'T') {
-            paramMultibook = objContext.getParameter({
-              name: 'custscript_lmry_terceros_mprdc_multi'
-            });
-
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_terceros_multibook',
-              value: '' + paramMultibook
-            });
-          }
-
-          featuresubs = runtime.isFeatureInEffect({
-            feature: "SUBSIDIARIES"
-          });
-
-          // 6. Subsidiary
-          if (featuresubs || featuresubs == 'T') {
-            paramSubsidy = objContext.getParameter({
-              name: 'custscript_lmry_terceros_mprdc_subsi'
-            });
-
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_terceros_subsi',
-              value: '' + paramSubsidy
-            });
-          }
-
-          var id = record.save();
+        if (firtsDigitPUC == paramPUC) {
+          //actualizarThirdData(arrTemp, firtsDigitPUC);
         }
       } catch (err) {
         //log.error('err', err);
@@ -337,95 +182,18 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
      */
     function summarize(context) {
       try {
-        log.error('summarize', 'summarize');
-
+        log.debug('summarize', 'summarize');
         ParametrosYFeatures();
-
-        ArrEntidades = ObtenerEntidades();
-
-        // Obtiene los periodos Fiscal Year
+        // Obtiene los periodos Fiscal Year (desde el inicio hasta un año antes del periodo de generación)
         ArrYears = ObtenerAñosFiscales();
-
         OrdenarAños(ArrYears);
+        log.debug('ArrYears en summarize', ArrYears);
+        var arrSaldoAnterior = obtenerSaldoAnterior(ArrYears[ArrYears.length - 1][1]); //saldos del inicio de los tiempos hasta un año antes al periodo de generación.
+        log.debug('arrSaldoAnterior',arrSaldoAnterior);
 
-        // Obtener todos los periodos
-        ArrAllPeriods = ObtenerPeriodos();
+        var idfile = savefile(ConvertirAString(arrSaldoAnterior));
 
-        // Obtener periodos del año
-        ArrYearPeriods = ObtenerPeriodosDelAño(ArrAllPeriods);
-
-        var ArrYearsForSearch = new Array();
-        var cont = 0;
-
-        for (var i = 0; i < ArrYears.length; i++) {
-          if (ArrYears[i][1] < periodYearIni) {
-            ArrYearsForSearch[cont] = ArrYears[i][1];
-            cont++;
-          }
-        }
-
-        if (paramEntity != null) {
-          ObtenerEntidad(paramEntity);
-        }
-        if (ArrYearsForSearch.length != 0) {
-          ArrData = ObtenerDataDeRecord(ArrYearsForSearch[0], ArrYearsForSearch[ArrYearsForSearch.length - 1]);
-        }
-        // Obtiene data de los periodos restantes
-        if (ArrYearPeriods.length != 0) {
-          ArrDataRestante = ObtenerData(ArrYearPeriods, false, false, false);
-          if (feamultibook) {
-            ArrDataRestanteSpecific = ObtenerData(ArrYearPeriods, false, true, false);
-
-            if (ArrDataRestanteSpecific.length != 0) {
-              //ArrDataRestante = JuntarConDataSpecific(ArrDataRestante, ArrDataRestanteSpecific);
-              Array.prototype.push.apply(ArrDataRestante, ArrDataRestanteSpecific);
-            }
-          }
-
-          ArrDataRestante = EntityToJson(ArrDataRestante);
-
-          if (ArrDataRestante.length != 0) {
-            ArrDataRestante = AgruparPorCuenta(ArrDataRestante);
-          }
-          //TODO EL SALDO ANTERIOR
-          ArrData = JuntarYAgruparArreglos(ArrData, ArrDataRestante);
-        }
-
-
-        //ArrData es Saldo Anterior
-
-        // Obtiene Movimientos
-        if (paramPeriodFin != null) {
-          ArrDataActual = ObtenerData(paramPeriod, true, false, false, paramPeriodFin);
-        } else {
-          ArrDataActual = ObtenerData(paramPeriod, true, false, false);
-        }
-
-        if (feamultibook) {
-          if (paramPeriodFin != null) {
-            ArrDataAcualSpecific = ObtenerData(paramPeriod, true, true, false, paramPeriodFin);
-          } else {
-            ArrDataAcualSpecific = ObtenerData(paramPeriod, true, true, false);
-          }
-
-          if (ArrDataAcualSpecific.length != 0) {
-            Array.prototype.push.apply(ArrDataActual, ArrDataAcualSpecific);
-          }
-        }
-
-        ArrDataActual = EntityToJson(ArrDataActual);
-
-        if (ArrDataActual.length != 0) {
-          ArrDataActual = AgruparPorCuenta(ArrDataActual);
-        }
-
-        ArrData = ObtenerArregloFinalSeisDigitos(ArrData, ArrDataActual);
-
-        ArrData_str = ConvertirAString(ArrData);
-
-        var idfile = savefile(ArrData_str);
-
-        LanzarSchedule(idfile);
+        //rellamarMapReduce(idfile);
 
       } catch (err) {
         log.error('err', err);
@@ -433,71 +201,88 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       }
     }
 
-    function EntityToJson(ArrTemp) {
-      for (var i = 0; i < ArrTemp.length; i++) {
-        if (ArrTemp[i][3] != null && ArrTemp[i][3] != '') {
-          for (var j = 0; j < ArrEntidades.length; j++) {
-            if (ArrTemp[i][3] == ArrEntidades[j][0]) {
-              var json_entity = {};
+    function ObtenerPeriodosDelAño(ArrAllPeriods) {
+      var ArrReturn = new Array();
 
-              json_entity.name = ArrEntidades[j][1];
+      for (var i = 0; i < ArrAllPeriods.length; i++) {
+        var tempYear = format.parse({
+          value: ArrAllPeriods[i][1],
+          type: format.Type.DATE
+        }).getFullYear();
 
-              json_entity.nit = ArrEntidades[j][2];
+        var tempMonth = format.parse({
+          value: ArrAllPeriods[i][1],
+          type: format.Type.DATE
+        }).getMonth();
 
-              json_entity.internalid = ArrEntidades[j][0];
-
-              ArrTemp[i][3] = JSON.stringify(json_entity);
-
-              break;
-            }
-            //No encuentra la entidad
-            if (j == ArrEntidades.length - 1) {
-              ArrTemp[i][3] = '';
-            }
+        if (periodIsAdjust) {
+          if (tempYear == periodYearIni && tempMonth <= periodMonthIni && paramPeriod != ArrAllPeriods[i][0]) {
+            var arr = new Array();
+            arr[0] = ArrAllPeriods[i][0];
+            arr[1] = ArrAllPeriods[i][1];
+            ArrReturn.push(arr);
+          }
+        } else {
+          if (tempYear == periodYearIni && tempMonth < periodMonthIni) {
+            var arr = new Array();
+            arr[0] = ArrAllPeriods[i][0];
+            arr[1] = ArrAllPeriods[i][1];
+            ArrReturn.push(arr);
           }
         }
       }
 
-      return ArrTemp;
+      ArrReturn = OrdenarPeriodosPorMes(ArrReturn);
+      return ArrReturn;
     }
 
-    function ObtenerEntidades() {
+    function obtenerSaldoAnterior(lastYear) {
       var intDMinReg = 0;
       var intDMaxReg = 1000;
-
       var DbolStop = false;
-      var ArrVendors_temp = new Array();
-      var cont = 0;
+      var ArrReturn = new Array();
 
-      //Obtiene Vendors
-      var busqueda_vendor = search.create({
-        type: 'vendor',
-        columns: [
-          search.createColumn({
-            name: 'isperson'
-          }),
-          search.createColumn({
-            name: 'firstname'
-          }),
-          search.createColumn({
-            name: 'lastname'
-          }),
-          search.createColumn({
-            name: 'companyname'
-          }),
-          search.createColumn({
-            name: 'vatregnumber'
-          }),
-          search.createColumn({
-            name: 'internalid'
-          })
-        ]
+      var savedsearch = search.load({
+        /*LatamReady - CO Inventory and Balance Test*/
+        id: 'customsearch_test_co_inv_bal'
       });
 
-      var savedsearch_vendor = busqueda_vendor.run();
+      var pucFilter = search.createFilter({
+        name: 'custrecord_lmry_co_terceros_puc6',
+        operator: search.Operator.STARTSWITH,
+        values: [paramPUC]
+      });
+      savedsearch.filters.push(pucFilter);
+
+      var periodFilter = search.createFilter({
+        name: 'custrecord_lmry_co_terceros_year',
+        operator: search.Operator.LESSTHANOREQUALTO,
+        values: [lastYear]
+      })
+      savedsearch.filters.push(periodFilter);
+
+      if (featuresubs) {
+        var subsidiaryFilter = search.createFilter({
+          name: 'custrecord_lmry_co_terceros_subsi',
+          operator: search.Operator.IS,
+          values: [paramSubsidy]
+        });
+        savedsearch.filters.push(subsidiaryFilter);
+      }
+
+      if (feamultibook) {
+        var multibookFilter = search.createFilter({
+          name: 'custrecord_lmry_co_terceros_multibook',
+          operator: search.Operator.IS,
+          values: [paramMultibook]
+        });
+        savedsearch.filters.push(multibookFilter);
+      }
+
+      var savedsearchResult = savedsearch.run();
 
       while (!DbolStop) {
-        var objResult = savedsearch_vendor.getRange(intDMinReg, intDMaxReg);
+        var objResult = savedsearchResult.getRange(intDMinReg, intDMaxReg);
 
         if (objResult != null) {
 
@@ -507,32 +292,19 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
           for (var i = 0; i < objResult.length; i++) {
             var columns = objResult[i].columns;
-
             var arrAuxiliar = new Array();
-
-            // 0 Internal ID
-            if (objResult[i].getValue(columns[5]) != null && objResult[i].getValue(columns[5]) != '- None -' && objResult[i].getValue(columns[5]) != 'NaN' && objResult[i].getValue(columns[5]) != 'undefined') {
-              arrAuxiliar[0] = objResult[i].getValue(columns[5]);
-            } else {
-              arrAuxiliar[0] = ''
+            // 0. PUC 4 digitos
+            // 1. Debit
+            // 2. Credit
+            // 3. Balance
+            for (var j = 0; j < columns.length; j++) {
+              if (objResult[i].getValue(columns[j]) != null && objResult[i].getValue(columns[j]) != '- None -' && objResult[i].getValue(columns[j]) != 'NaN' && objResult[i].getValue(columns[j]) != 'undefined') {
+                arrAuxiliar[j] = objResult[i].getValue(columns[j]);
+              } else {
+                arrAuxiliar[j] = '';
+              }
             }
-
-            // 1. Name
-            if (objResult[i].getValue(columns[0]) || objResult[i].getValue(columns[0]) == 'T') {
-              arrAuxiliar[1] = '' + objResult[i].getValue(columns[1]) + ' ' + objResult[i].getValue(columns[2]);
-            } else {
-              arrAuxiliar[1] = objResult[i].getValue(columns[3]);
-            }
-
-            // 2. NIT
-            if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -' && objResult[i].getValue(columns[4]) != 'NaN' && objResult[i].getValue(columns[4]) != 'undefined') {
-              arrAuxiliar[2] = '' + objResult[i].getValue(columns[4]);
-            } else {
-              arrAuxiliar[2] = '';
-            }
-
-            ArrVendors_temp[cont] = arrAuxiliar;
-            cont++;
+            ArrReturn.push(arrAuxiliar);
           }
 
           if (!DbolStop) {
@@ -544,263 +316,122 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           DbolStop = true;
         }
       }
-
-      //Obtiene Customers
-      intDMinReg = 0;
-      intDMaxReg = 1000;
-
-      DbolStop = false;
-      var ArrCustomers_temp = new Array();
-      cont = 0;
-
-      var busqueda_customer = search.create({
-        type: 'customer',
-        columns: [
-          search.createColumn({
-            name: 'isperson'
-          }),
-          search.createColumn({
-            name: 'firstname'
-          }),
-          search.createColumn({
-            name: 'lastname'
-          }),
-          search.createColumn({
-            name: 'companyname'
-          }),
-          search.createColumn({
-            name: 'vatregnumber'
-          }),
-          search.createColumn({
-            name: 'internalid'
-          })
-        ]
-      });
-
-      var savedsearch_customer = busqueda_customer.run();
-
-      while (!DbolStop) {
-        var objResult = savedsearch_customer.getRange(intDMinReg, intDMaxReg);
-
-        if (objResult != null) {
-
-          if (objResult.length != 1000) {
-            DbolStop = true;
-          }
-
-          for (var i = 0; i < objResult.length; i++) {
-            var columns = objResult[i].columns;
-
-            var arrAuxiliar = new Array();
-
-            // 0. Internal ID
-            if (objResult[i].getValue(columns[5]) != null && objResult[i].getValue(columns[5]) != '- None -' && objResult[i].getValue(columns[5]) != 'NaN' && objResult[i].getValue(columns[5]) != 'undefined') {
-              arrAuxiliar[0] = objResult[i].getValue(columns[5]);
-            } else {
-              arrAuxiliar[0] = '';
-            }
-
-            // 1. Name
-            if (objResult[i].getValue(columns[0]) || objResult[i].getValue(columns[0]) == 'T') {
-              arrAuxiliar[1] = '' + objResult[i].getValue(columns[1]) + ' ' + objResult[i].getValue(columns[2]);
-            } else {
-              arrAuxiliar[1] = objResult[i].getValue(columns[3]);
-            }
-
-            // 2. NIT
-            if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -' && objResult[i].getValue(columns[4]) != 'NaN' && objResult[i].getValue(columns[4]) != 'undefined') {
-              arrAuxiliar[2] = '' + objResult[i].getValue(columns[4]);
-            } else {
-              arrAuxiliar[2] = '';
-            }
-
-            ArrCustomers_temp[cont] = arrAuxiliar;
-            cont++;
-          }
-
-          if (!DbolStop) {
-            intDMinReg = intDMaxReg;
-            intDMaxReg += 1000;
-          }
-
-        } else {
-          DbolStop = true;
-        }
-      }
-
-      //Obtiene Employees
-      intDMinReg = 0;
-      intDMaxReg = 1000;
-
-      DbolStop = false;
-      var ArrEmployees_temp = new Array();
-      cont = 0;
-
-      var busqueda_employee = search.create({
-        type: 'employee',
-        columns: [
-          search.createColumn({
-            name: 'firstname'
-          }),
-          search.createColumn({
-            name: 'lastname'
-          }),
-          search.createColumn({
-            name: 'custentity_lmry_sv_taxpayer_number'
-          }),
-          search.createColumn({
-            name: 'internalid'
-          })
-        ]
-      });
-
-      var savedsearch_employee = busqueda_employee.run();
-
-      while (!DbolStop) {
-        var objResult = savedsearch_employee.getRange(intDMinReg, intDMaxReg);
-
-        if (objResult != null) {
-
-          if (objResult.length != 1000) {
-            DbolStop = true;
-          }
-
-          for (var i = 0; i < objResult.length; i++) {
-            var columns = objResult[i].columns;
-
-            var arrAuxiliar = new Array();
-
-            // 0. Internal ID
-            if (objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '- None -' && objResult[i].getValue(columns[3]) != 'NaN' && objResult[i].getValue(columns[3]) != 'undefined') {
-              arrAuxiliar[0] = '' + objResult[i].getValue(columns[3]);
-            } else {
-              arrAuxiliar[0] = '';
-            }
-
-            // 1. Name
-            arrAuxiliar[1] = '' + objResult[i].getValue(columns[0]) + ' ' + objResult[i].getValue(columns[1]);
-
-            // 2. NIT
-            if (objResult[i].getValue(columns[2]) != null && objResult[i].getValue(columns[2]) != '- None -' && objResult[i].getValue(columns[2]) != 'NaN' && objResult[i].getValue(columns[2]) != 'undefined') {
-              arrAuxiliar[2] = '' + objResult[i].getValue(columns[2]);
-            } else {
-              arrAuxiliar[2] = '';
-            }
-
-
-            ArrEmployees_temp[cont] = arrAuxiliar;
-            cont++;
-          }
-
-          if (!DbolStop) {
-            intDMinReg = intDMaxReg;
-            intDMaxReg += 1000;
-          }
-
-        } else {
-          DbolStop = true;
-        }
-      }
-
-      //Obtiene Other Name
-      intDMinReg = 0;
-      intDMaxReg = 1000;
-
-      DbolStop = false;
-      var ArrOtherName_temp = new Array();
-      cont = 0;
-
-      var busqueda_other_name = search.create({
-        type: "othername",
-        fiters: [
-          search.createFilter({
-            name: 'subsidiary',
-            operator: search.Operator.ANYOF,
-            value: paramSubsidy
-          })
-        ],
-        columns: [
-          search.createColumn({
-            name: 'internalid'
-          })
-        ]
-      });
-
-      var savedsearch_other_name = busqueda_other_name.run();
-
-      while (!DbolStop) {
-        var objResult = savedsearch_other_name.getRange(intDMinReg, intDMaxReg);
-
-        if (objResult != null) {
-
-          if (objResult.length != 1000) {
-            DbolStop = true;
-          }
-
-          for (var i = 0; i < objResult.length; i++) {
-            var columns = objResult[i].columns;
-
-            // 0 Internal ID
-            ArrOtherName_temp.push(objResult[i].getValue(columns[0]));
-          }
-
-          if (!DbolStop) {
-            intDMinReg = intDMaxReg;
-            intDMaxReg += 1000;
-          }
-
-        } else {
-          DbolStop = true;
-        }
-      }
-
-      var ArrOtherNameFinal = [];
-
-      for (var i = 0; i < ArrOtherName_temp.length; i++) {
-        var otherNameRcd = recordModulo.load({
-          type: search.Type.OTHER_NAME,
-          id: ArrOtherName_temp[i]
-        });
-
-        var vatregnumberField = otherNameRcd.getValue({
-          fieldId: 'vatregnumber'
-        });
-
-        var ispersonField = otherNameRcd.getValue({
-          fieldId: 'isperson'
-        });
-
-        var firstnameField = otherNameRcd.getValue({
-          fieldId: 'firstname'
-        });
-
-        var lastnameField = otherNameRcd.getValue({
-          fieldId: 'lastname'
-        });
-
-        var companynameField = otherNameRcd.getValue({
-          fieldId: 'companyname'
-        });
-
-        var arrTemp = [];
-
-        arrTemp[0] = ArrOtherName_temp[i];
-
-        if (ispersonField && ispersonField != 'F') {
-          arrTemp[1] = firstnameField + ' ' + lastnameField;
-        } else {
-          arrTemp[1] = companynameField;
-        }
-
-        arrTemp[2] = vatregnumberField;
-
-        ArrOtherNameFinal.push(arrTemp);
-      }
-
-      //Juntar Arreglos
-      var ArrReturn = ArrEmployees_temp.concat(ArrCustomers_temp.concat(ArrVendors_temp.concat(ArrOtherNameFinal)));
 
       return ArrReturn;
+    }
+
+    function actualizarThirdProc(anioProcesado) {
+
+      var record = recordModulo.create({
+        type: 'customrecord_lmry_co_terceros_procesados',
+      });
+
+      if (featuresubs || featuresubs == 'T') {
+        record.setValue({
+          fieldId: 'custrecord_lmry_co_subsi_procesado',
+          value: '' + paramSubsidy
+        });
+      } else {
+
+        var configpage = config.load({
+          type: config.Type.COMPANY_INFORMATION
+        });
+        var idProce = configpage.getValue('id');
+
+        record.setValue({
+          fieldId: 'custrecord_lmry_co_subsi_procesado',
+          value: '' + idProce
+        });
+      }
+
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_year_procesado',
+        value: anioProcesado
+      });
+
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_puc_procesado',
+        value: '' + paramPUC
+      });
+
+      if (feamultibook || feamultibook == 'T') {
+        record.setValue({
+          fieldId: 'custrecord_lmry_co_multibook_procesado',
+          value: '' + paramMultibook
+        });
+      }
+
+      record.save();
+    }
+
+    function actualizarThirdData(arrTemp, puc) {
+
+      var record = recordModulo.create({
+        type: 'customrecord_lmry_co_terceros_data',
+      });
+      // 7. PUC 6
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_terceros_puc6',
+        value: '' + puc
+      });
+      // 0. Account
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_terceros_account',
+        value: arrTemp[0]
+      });
+      // 1. Debit
+      var debit = 0;
+      if (arrTemp[1] != null && arrTemp[1] != '') {
+        debit = arrTemp[1];
+      }
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_terceros_debit',
+        value: debit
+      });
+      // 2. Credit
+      var credit = 0;
+      if (arrTemp[2] != null && arrTemp[2] != '') {
+        credit = arrTemp[2];
+      }
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_terceros_credit',
+        value: credit
+      });
+      // 3. Entity
+      var json_entity = {};
+      var flag_entity = ObtenerEntidad(arrTemp[3]);
+
+      if (flag_entity) {
+        json_entity.name = entity_name;
+        json_entity.nit = entity_nit;
+        json_entity.internalid = arrTemp[3];
+
+        record.setValue({
+          fieldId: 'custrecord_lmry_co_terceros_entity',
+          value: JSON.stringify(json_entity)
+        });
+      }
+      // 4. Year
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_terceros_year',
+        value: arrTemp[4]
+      });
+      // 5. Multibook
+      if (feamultibook || feamultibook == 'T') {
+        record.setValue({
+          fieldId: 'custrecord_lmry_co_terceros_multibook',
+          value: '' + paramMultibook
+        });
+      }
+      // 6. Subsidiary
+      if (featuresubs || featuresubs == 'T') {
+        record.setValue({
+          fieldId: 'custrecord_lmry_co_terceros_subsi',
+          value: '' + paramSubsidy
+        });
+      }
+
+      var id = record.save();
     }
 
     function AgruparPorCuenta(ArrTemp) {
@@ -811,7 +442,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       for (var i = 1; i < ArrTemp.length; i++) {
         var intLength = ArrReturn.length;
         for (var j = 0; j < intLength; j++) {
-          //if(ArrTemp[i][0] == ArrReturn[j][0] && ArrTemp[i][3].trim() == ArrReturn[j][3].trim()){
+          //Agrupa por cuenta y por entity
           if (ArrTemp[i][0] == ArrReturn[j][0] && ArrTemp[i][3] == ArrReturn[j][3]) {
             ArrReturn[j][1] = Math.abs(ArrReturn[j][1]) + Math.abs(ArrTemp[i][1]);
             ArrReturn[j][2] = Math.abs(ArrReturn[j][2]) + Math.abs(ArrTemp[i][2]);
@@ -826,27 +457,10 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       return ArrReturn;
     }
 
-    function JuntarConDataSpecific(ArrDataRestante, ArrDataRestanteSpecific) {
-      var Length = ArrDataRestante.length;
-      for (var i = 0; i < ArrDataRestanteSpecific.length; i++) {
-        for (var j = 0; j < Length; j++) {
-          if (ArrDataRestante[j][0] == ArrDataRestanteSpecific[i][0] && ArrDataRestante[j][3].trim() == ArrDataRestanteSpecific[i][3].trim()) {
-            ArrDataRestante[j][1] = Number(ArrDataRestante[j][1]) + Number(ArrDataRestanteSpecific[i][1]);
-            ArrDataRestante[j][2] = Number(ArrDataRestante[j][2]) + Number(ArrDataRestanteSpecific[i][2]);
-            break;
-          }
-          if (j == Length - 1) {
-            ArrDataRestante.push(ArrDataRestanteSpecific[i]);
-          }
-        }
-      }
-
-      return ArrDataRestante;
-    }
-
     function ObtenerEntidad(paramEntity) {
       try {
         if (paramEntity != null && paramEntity != '') {
+
           var entity_customer_temp = search.lookupFields({
             type: search.Type.CUSTOMER,
             id: Number(paramEntity),
@@ -982,87 +596,37 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         }
       } catch (err) {
         log.error('err', err);
-
         log.error('paramEntity', paramEntity);
-
         return false;
       }
     }
 
-    function ConvertirAString(ArrTemp) {
+    function ConvertirAString(arrData) {
       var str_return = '';
-
-      for (var i = 0; i < ArrTemp.length; i++) {
-        for (var j = 0; j < ArrTemp[i].length; j++) {
-          str_return += ArrTemp[i][j];
-          str_return += '|';
-        }
-        str_return += '\r\n';
+      for (var i = 0; i < arrData.length; i++) {
+        str_return += arrData[i].join('|')+'\r\n';
       }
-
+      log.debug('str_return',str_return);
       return str_return;
     }
 
-    function LanzarSchedule(idfile) {
+    function rellamarMapReduce(idfile) {
       var params = {};
 
-      paramRecordID = objContext.getParameter({
-        name: 'custscript_lmry_terceros_mprdc_record'
-      });
-
-      paramEntity = objContext.getParameter({
-        name: 'custscript_lmry_terceros_mprdc_entity'
-      });
-
-      paramMultibook = objContext.getParameter({
-        name: 'custscript_lmry_terceros_mprdc_multi'
-      });
-
-      paramSubsidy = objContext.getParameter({
-        name: 'custscript_lmry_terceros_mprdc_subsi'
-      });
-
-      paramPeriod = objContext.getParameter({
-        name: 'custscript_lmry_terceros_mprdc_period'
-      });
-
-      paramPeriodFin = objContext.getParameter({
-        name: 'custscript_lmry_terceros_mprdc_periodFin'
-      });
-
-      //params['custscript_5'] = paramRecordID;
-
-      /*paramPeriod = 303;
-      paramSubsidy = 16;
-      paramMultibook = 1;
-      paramEntity = null;*/
-
       params['custscript_lmry_co_terce_schdl_recordid'] = paramRecordID;
-
       params['custscript_lmry_co_terce_schdl_period'] = paramPeriod;
-
       params['custscript_lmry_co_terce_schdl_fileid'] = idfile;
-
       params['custscript_lmry_co_terce_schdl_lastpuc'] = paramPUC;
 
       if (featuresubs) {
         params['custscript_lmry_co_terce_schdl_subsi'] = paramSubsidy;
       }
-
       if (feamultibook) {
         params['custscript_lmry_co_terce_schdl_multi'] = paramMultibook
       }
 
-      if (paramEntity != null) {
-        params['custscript_lmry_co_terce_schdl_entity'] = paramEntity;
-      }
-
-      if (paramPeriodFin != null) {
-        params['custscript_lmry_co_terce_schdl_periodfin'] = paramPeriodFin;
-      }
-
       var RedirecSchdl = task.create({
-        taskType: task.TaskType.SCHEDULED_SCRIPT,
+        taskType: task.TaskType.MAP_REDUCE,
         scriptId: 'customscript_lmry_co_bcmp_ter_schdl_v2_0',
         deploymentId: 'customdeploy_lmry_co_bcmp_ter_schdl_v2_0',
         params: params
@@ -1078,7 +642,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
       // Almacena en la carpeta de Archivos Generados
       if (FolderId != '' && FolderId != null) {
-        var Final_NameFile = 'TERCEROS_ADISTEC_MAPREDUCE_TEST' + '.txt';
+        var Final_NameFile = 'INVENTARIO_BALANCE_TEMPORAL' + '.txt';
         // Crea el archivo.xls
         var file = fileModulo.create({
           name: Final_NameFile,
@@ -1106,898 +670,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
         return idfile;
       }
-    }
-
-    function ObtenerArregloFinalSeisDigitos(ArrSaldoAnterior, ArrMovimientos) {
-      /*
-       * SEARCH
-       * 0.  cuenta
-       * 1.  denominacion
-       * 2.  sum debitos
-       * 3.  sum credito
-       * 4.  cuenta 4 digitos
-       * 5.  denominacion 4 digitos
-       * 6.  cuenta 2 digitos
-       * 7.  denominacion 2 digitos
-       * 8.  cuenta 1 digito
-       * 9.  denominacion 1 digito
-       * 10. entidad
-       */
-
-      var arr_final = new Array();
-      var cont = 0;
-
-      if (ArrSaldoAnterior != null && ArrSaldoAnterior.length != 0 && ArrMovimientos != null && ArrMovimientos.length != 0) {
-        for (var i = 0; i < ArrSaldoAnterior.length; i++) {
-          for (var j = 0; j < ArrMovimientos.length; j++) {
-            if (ArrSaldoAnterior[i][0] == ArrMovimientos[j][0] && ArrSaldoAnterior[i][3].trim() == ArrMovimientos[j][3].trim()) {
-              var sub_array = new Array();
-
-              sub_array[0] = ArrSaldoAnterior[i][0];
-
-              var saldo_anterior = Math.abs(Number(ArrSaldoAnterior[i][1])) - Math.abs(Number(ArrSaldoAnterior[i][2]));
-
-              if (saldo_anterior > 0) {
-                sub_array[1] = Math.abs(saldo_anterior);
-                sub_array[2] = 0.0;
-              } else if (saldo_anterior < 0) {
-                sub_array[1] = 0.0;
-                sub_array[2] = Math.abs(saldo_anterior);
-              } else if (saldo_anterior == 0) {
-                sub_array[1] = 0.0;
-                sub_array[2] = 0.0;
-              }
-
-              var movimientos = Math.abs(Number(ArrMovimientos[j][1])) - Math.abs(Number(ArrMovimientos[j][2]));
-
-              /*if (movimientos > 0) {
-                  sub_array[3] = Math.abs(movimientos);
-                  sub_array[4] = 0.0;
-              } else if (movimientos < 0) {
-                  sub_array[3] = 0.0;
-                  sub_array[4] = Math.abs(movimientos);
-              } else if (movimientos == 0) {
-                  sub_array[3] = 0.0;
-                  sub_array[4] = 0.0;
-              }*/
-
-              sub_array[3] = Math.abs(Number(ArrMovimientos[j][1]));
-              sub_array[4] = Math.abs(Number(ArrMovimientos[j][2]));
-
-              var nuevoSaldo = Math.abs(Number(ArrSaldoAnterior[i][1])) - Math.abs(Number(ArrSaldoAnterior[i][2])) + Math.abs(Number(ArrMovimientos[j][1])) - Math.abs(Number(ArrMovimientos[j][2]));
-
-              if (nuevoSaldo > 0) {
-                sub_array[5] = Math.abs(nuevoSaldo);
-                sub_array[6] = 0.0;
-              } else if (nuevoSaldo < 0) {
-                sub_array[5] = 0.0;
-                sub_array[6] = Math.abs(nuevoSaldo);
-              } else if (nuevoSaldo == 0) {
-                sub_array[5] = 0.0;
-                sub_array[6] = 0.0;
-              }
-
-              sub_array[7] = ArrSaldoAnterior[i][3];
-
-              if (!(Math.abs(ArrSaldoAnterior[i][1]) == 0 && Math.abs(ArrSaldoAnterior[i][2]) == 0 &&
-                  Math.abs(ArrMovimientos[j][1]) == 0 && Math.abs(ArrMovimientos[j][2]) == 0)) {
-                arr_final[cont] = sub_array;
-                cont++;
-              }
-
-              break;
-            } else {
-              if (j == ArrMovimientos.length - 1) {
-                var sub_array_2 = new Array();
-                sub_array_2[0] = ArrSaldoAnterior[i][0];
-
-                sub_array_2[1] = 0.0;
-                sub_array_2[2] = 0.0;
-                sub_array_2[3] = 0.0;
-                sub_array_2[4] = 0.0;
-
-                var saldo_anterior = Math.abs(Number(ArrSaldoAnterior[i][1])) - Math.abs(Number(ArrSaldoAnterior[i][2]));
-
-                if (saldo_anterior > 0) {
-                  sub_array_2[1] = Math.abs(saldo_anterior);
-                  sub_array_2[2] = 0.0;
-                } else if (saldo_anterior < 0) {
-                  sub_array_2[1] = 0.0;
-                  sub_array_2[2] = Math.abs(saldo_anterior);
-                } else if (saldo_anterior == 0) {
-                  sub_array_2[1] = 0.0;
-                  sub_array_2[2] = 0.0;
-                }
-
-                sub_array_2[3] = 0.0;
-                sub_array_2[4] = 0.0;
-
-                var nuevoSaldo = Math.abs(Number(ArrSaldoAnterior[i][1])) - Math.abs(Number(ArrSaldoAnterior[i][2]));
-
-                if (nuevoSaldo > 0) {
-                  sub_array_2[5] = Math.abs(nuevoSaldo);
-                  sub_array_2[6] = 0.0;
-                } else if (nuevoSaldo < 0) {
-                  sub_array_2[5] = 0.0;
-                  sub_array_2[6] = Math.abs(nuevoSaldo);
-                } else if (nuevoSaldo == 0) {
-                  sub_array_2[5] = 0.0;
-                  sub_array_2[6] = 0.0;
-                }
-
-                sub_array_2[7] = ArrSaldoAnterior[i][3];
-
-
-                if (Number(ArrSaldoAnterior[i][1]) != 0 || Number(ArrSaldoAnterior[i][2]) != 0) {
-                  arr_final[cont] = sub_array_2;
-                  cont++;
-                }
-
-                break;
-              }
-            }
-          }
-        }
-
-        for (var i = 0; i < ArrMovimientos.length; i++) {
-          for (var j = 0; j < ArrSaldoAnterior.length; j++) {
-            if (ArrSaldoAnterior[j][0] == ArrMovimientos[i][0]) {
-              if (ArrSaldoAnterior[j][3].trim() != ArrMovimientos[i][3].trim()) {
-                if (j == ArrSaldoAnterior.length - 1) {
-                  var sub = new Array();
-                  sub[0] = ArrMovimientos[i][0];
-
-                  sub[1] = 0.0;
-                  sub[2] = 0.0;
-
-                  var movimientos = Math.abs(Number(ArrMovimientos[i][1])) - Math.abs(Number(ArrMovimientos[i][2]));
-
-                  /*if (movimientos > 0) {
-                      sub[3] = Math.abs(movimientos);
-                      sub[4] = 0.0;
-                  } else if (movimientos < 0) {
-                      sub[3] = 0.0;
-                      sub[4] = Math.abs(movimientos);
-                  } else if (movimientos == 0.0) {
-                      sub[3] = 0.0;
-                      sub[4] = 0.0;
-                  }*/
-
-                  sub[3] = Math.abs(Number(ArrMovimientos[i][1]));
-                  sub[4] = Math.abs(Number(ArrMovimientos[i][2]));
-
-                  var nuevo_saldo = Math.abs(Number(ArrMovimientos[i][1])) - Math.abs(Number(ArrMovimientos[i][2]));
-
-                  if (nuevo_saldo > 0) {
-                    sub[5] = Math.abs(nuevo_saldo);
-                    sub[6] = 0.0;
-                  } else if (nuevo_saldo < 0) {
-                    sub[5] = 0.0;
-                    sub[6] = Math.abs(nuevo_saldo);
-                  } else if (nuevo_saldo == 0.0) {
-                    sub[5] = 0.0;
-                    sub[6] = 0.0;
-                  }
-
-                  sub[7] = ArrMovimientos[i][3];
-
-                  if (Math.abs(Number(ArrMovimientos[i][1])) != 0 || Math.abs(Number(ArrMovimientos[i][2])) != 0) {
-                    arr_final[cont] = sub;
-                    cont++;
-                  }
-
-                  break;
-                }
-              } else {
-                break;
-              }
-            } else {
-              if (j == ArrSaldoAnterior.length - 1) {
-                var sub = new Array();
-                sub[0] = ArrMovimientos[i][0];
-
-                sub[1] = 0.0;
-                sub[2] = 0.0;
-
-                var movimientos = Math.abs(Number(ArrMovimientos[i][1])) - Math.abs(Number(ArrMovimientos[i][2]));
-
-                /*if (movimientos > 0) {
-                    sub[3] = Math.abs(movimientos);
-                    sub[4] = 0.0;
-                } else if (movimientos < 0) {
-                    sub[3] = 0.0;
-                    sub[4] = Math.abs(movimientos);
-                } else if (movimientos == 0) {
-                    sub[3] = 0.0;
-                    sub[4] = 0.0;
-                }*/
-
-                sub[3] = Math.abs(Number(ArrMovimientos[i][1]));
-                sub[4] = Math.abs(Number(ArrMovimientos[i][2]));
-
-                var nuevo_saldo = Math.abs(Number(ArrMovimientos[i][1])) - Math.abs(Number(ArrMovimientos[i][2]));
-
-                if (nuevo_saldo > 0) {
-                  sub[5] = Math.abs(nuevo_saldo);
-                  sub[6] = 0.0;
-                } else if (nuevo_saldo < 0) {
-                  sub[5] = 0.0;
-                  sub[6] = Math.abs(nuevo_saldo);
-                } else if (nuevo_saldo == 0.0) {
-                  sub[5] = 0.0;
-                  sub[6] = 0.0;
-                }
-                sub[7] = ArrMovimientos[i][3];
-
-                if (Math.abs(Number(ArrMovimientos[i][1])) != 0 || Math.abs(Number(ArrMovimientos[i][2])) != 0) {
-                  arr_final[cont] = sub;
-                  cont++;
-                }
-
-                break;
-              }
-            }
-          }
-        }
-      } else if (ArrMovimientos != null && ArrMovimientos.length != 0) {
-        for (var i = 0; i < ArrMovimientos.length; i++) {
-          var sub = new Array();
-
-          sub[0] = ArrMovimientos[i][0];
-
-          sub[1] = 0.0;
-          sub[2] = 0.0;
-
-          var movimientos = Math.abs(ArrMovimientos[i][1]) - Math.abs(ArrMovimientos[i][2]);
-
-          /*if (movimientos > 0) {
-              sub[3] = Math.abs(movimientos);
-              sub[4] = 0.0;
-          } else if (movimientos < 0) {
-              sub[3] = 0.0;
-              sub[4] = Math.abs(movimientos);
-          } else if (movimientos == 0) {
-              sub[3] = 0.0;
-              sub[4] = 0.0;
-          }*/
-
-          sub[3] = Math.abs(ArrMovimientos[i][1]);
-          sub[4] = Math.abs(ArrMovimientos[i][2]);
-
-          var nuevo_saldo = Number(ArrMovimientos[i][1]) - Number(ArrMovimientos[i][2]);
-
-          if (nuevo_saldo > 0) {
-            sub[5] = Math.abs(nuevo_saldo);
-            sub[6] = 0.0;
-          } else if (nuevo_saldo < 0) {
-            sub[5] = 0.0;
-            sub[6] = Math.abs(nuevo_saldo);
-          } else if (nuevo_saldo == 0.0) {
-            sub[5] = 0.0;
-            sub[6] = 0.0;
-          }
-          sub[7] = ArrMovimientos[i][3];
-
-          arr_final[cont] = sub;
-          cont++;
-        }
-      } else if (ArrSaldoAnterior != null && ArrSaldoAnterior.length != 0) {
-        for (var i = 0; i < ArrSaldoAnterior.length; i++) {
-          var sub = new Array();
-
-          sub[0] = ArrSaldoAnterior[i][0];
-
-          var saldo_anterior = Number(ArrSaldoAnterior[i][1]) - Number(ArrSaldoAnterior[i][2]);
-
-          if (saldo_anterior > 0) {
-            sub[1] = Math.abs(saldo_anterior);
-            sub[2] = 0.0;
-          } else if (saldo_anterior < 0) {
-            sub[1] = 0.0;
-            sub[2] = Math.abs(saldo_anterior);
-          } else if (saldo_anterior == 0.0) {
-            sub[1] = 0.0;
-            sub[2] = 0.0;
-          }
-          sub[3] = 0.0;
-          sub[4] = 0.0;
-
-          var nuevo_saldo = Number(ArrSaldoAnterior[i][1]) - Number(ArrSaldoAnterior[i][2]);
-
-          if (nuevo_saldo > 0) {
-            sub[5] = Math.abs(nuevo_saldo);
-            sub[6] = 0.0;
-          } else if (nuevo_saldo < 0) {
-            sub[5] = 0.0;
-            sub[6] = Math.abs(nuevo_saldo);
-          } else if (nuevo_saldo == 0.0) {
-            sub[5] = 0.0;
-            sub[6] = 0.0;
-          }
-          sub[7] = ArrSaldoAnterior[i][3];
-
-          arr_final[cont] = sub;
-          cont++;
-        }
-      } else {
-        flagEmpty = true;
-      }
-
-
-      return arr_final;
-    }
-
-    function JuntarYAgruparArreglos(ArrData, ArrDataRestante) {
-      if (ArrData.length != 0 && ArrDataRestante.length != 0) {
-        var ArrReturn = new Array();
-        var cont = 0;
-
-        var Length = ArrData.length;
-
-        for (var i = 0; i < ArrDataRestante.length; i++) {
-          for (var j = 0; j < Length; j++) {
-            if (ArrDataRestante[i][0] == ArrData[j][0] && ArrDataRestante[i][3].trim() == ArrData[j][3].trim()) {
-              ArrData[j][1] = Number(ArrData[j][1]) + Number(ArrDataRestante[i][1]);
-              ArrData[j][2] = Number(ArrData[j][2]) + Number(ArrDataRestante[i][2]);
-              break;
-            }
-
-            if (j == Length - 1) {
-              ArrData.push(ArrDataRestante[i]);
-            }
-          }
-        }
-
-        return ArrData;
-      } else if (ArrData.length != 0) {
-        return ArrData;
-      } else if (ArrDataRestante.length != 0) {
-        return ArrDataRestante;
-      }
-    }
-
-    function ObtenerDataDeRecord(firstYear, lastYear) {
-      var intDMinReg = 0;
-      var intDMaxReg = 1000;
-
-      var DbolStop = false;
-      var ArrReturn = new Array();
-      var cont = 0;
-
-      if (paramEntity != null) {
-        if (feamultibook || feamultibook == 'T') {
-          if (featuresubs || featuresubs == 'T') {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_multibook',
-                  operator: search.Operator.IS,
-                  values: [paramMultibook]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_subsi',
-                  operator: search.Operator.IS,
-                  values: [paramSubsidy]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          } else {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_multibook',
-                  operator: search.Operator.IS,
-                  values: [paramMultibook]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          }
-        } else {
-          if (featuresubs || featuresubs == 'T') {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_subsi',
-                  operator: search.Operator.IS,
-                  values: [paramSubsidy]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          } else {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          }
-        }
-      } else {
-        if (featuresubs || featuresubs == 'T') {
-          if (feamultibook || feamultibook == 'T') {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_multibook',
-                  operator: search.Operator.IS,
-                  values: [paramMultibook]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_subsi',
-                  operator: search.Operator.IS,
-                  values: [paramSubsidy]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          } else {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_subsi',
-                  operator: search.Operator.IS,
-                  values: [paramSubsidy]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          }
-        } else {
-          if (feamultibook || feamultibook == 'T') {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_multibook',
-                  operator: search.Operator.IS,
-                  values: [paramMultibook]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          } else {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          }
-        }
-      }
-
-      var savedsearch = busqueda.run();
-
-      while (!DbolStop) {
-        var objResult = savedsearch.getRange(intDMinReg, intDMaxReg);
-
-        if (objResult != null) {
-
-          if (objResult.length != 1000) {
-            DbolStop = true;
-          }
-
-          for (var i = 0; i < objResult.length; i++) {
-            var columns = objResult[i].columns;
-
-            var arrAuxiliar = new Array();
-
-            // 0. Account
-            if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN' && objResult[i].getValue(columns[0]) != 'undefined') {
-              arrAuxiliar[0] = objResult[i].getValue(columns[0]);
-            } else {
-              arrAuxiliar[0] = '';
-            }
-
-            // 1. Debit
-            if (objResult[i].getValue(columns[1]) != null && objResult[i].getValue(columns[1]) != '- None -' && objResult[i].getValue(columns[1]) != 'NaN' && objResult[i].getValue(columns[1]) != 'undefined') {
-              arrAuxiliar[1] = objResult[i].getValue(columns[1]);
-            } else {
-              arrAuxiliar[1] = '';
-            }
-
-            // 2. Credit
-            if (objResult[i].getValue(columns[2]) != null && objResult[i].getValue(columns[2]) != '- None -' && objResult[i].getValue(columns[2]) != 'NaN' && objResult[i].getValue(columns[2]) != 'undefined') {
-              arrAuxiliar[2] = objResult[i].getValue(columns[2]);
-            } else {
-              arrAuxiliar[2] = '';
-            }
-
-            // 3. Entity
-            if (objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '- None -' && objResult[i].getValue(columns[3]) != 'NaN' && objResult[i].getValue(columns[3]) != 'undefined') {
-              arrAuxiliar[3] = objResult[i].getValue(columns[3]);
-            } else {
-              arrAuxiliar[3] = '';
-            }
-
-            if (paramEntity != null) {
-              if (arrAuxiliar[3] != '') {
-                var entityJSON = JSON.parse(arrAuxiliar[3]);
-
-                if (entityJSON.internalid == paramEntity) {
-                  ArrReturn[cont] = arrAuxiliar;
-                  cont++;
-                }
-              }
-            } else {
-              ArrReturn[cont] = arrAuxiliar;
-              cont++;
-            }
-          }
-
-          if (!DbolStop) {
-            intDMinReg = intDMaxReg;
-            intDMaxReg += 1000;
-          }
-
-        } else {
-          DbolStop = true;
-        }
-      }
-
-      return ArrReturn;
-    }
-
-    function ObtenerPeriodosDelAño(ArrAllPeriods) {
-      var ArrReturn = new Array();
-
-      for (var i = 0; i < ArrAllPeriods.length; i++) {
-        var tempYear = format.parse({
-          value: ArrAllPeriods[i][1],
-          type: format.Type.DATE
-        }).getFullYear();
-
-        var tempMonth = format.parse({
-          value: ArrAllPeriods[i][1],
-          type: format.Type.DATE
-        }).getMonth();
-
-        if (periodIniIsAdjust) {
-          if (tempYear == periodYearIni && tempMonth <= periodMonthIni && paramPeriod != ArrAllPeriods[i][0]) {
-            var arr = new Array();
-
-            arr[0] = ArrAllPeriods[i][0];
-
-            arr[1] = ArrAllPeriods[i][1];
-
-            ArrReturn.push(arr);
-          }
-        } else {
-          if (tempYear == periodYearIni && tempMonth < periodMonthIni) {
-            var arr = new Array();
-
-            arr[0] = ArrAllPeriods[i][0];
-
-            arr[1] = ArrAllPeriods[i][1];
-
-            ArrReturn.push(arr);
-          }
-        }
-      }
-
-      ArrReturn = OrdenarPeriodosPorMes(ArrReturn);
-
-      return ArrReturn;
     }
 
     function OrdenarPeriodosPorMes(arrTemporal) {
@@ -2041,11 +713,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var busqueda = search.create({
         type: search.Type.ACCOUNTING_PERIOD,
         filters: [
-          // search.createFilter({
-          //     name : 'isadjust',
-          //     operator: search.Operator.IS,
-          //     values: ['F']
-          // }),
           search.createFilter({
             name: 'isquarter',
             operator: search.Operator.IS,
@@ -2078,16 +745,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
           for (var i = 0; i < objResult.length; i++) {
             var columns = objResult[i].columns;
-
             var arrAuxiliar = new Array();
-
             // 0. Internal ID
-            if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN' && objResult[i].getValue(columns[0]) != 'undefined') {
-              arrAuxiliar[0] = objResult[i].getValue(columns[0]);
-            } else {
-              arrAuxiliar[0] = '';
-            }
-
+            arrAuxiliar[0] = objResult[i].getValue(columns[0]);
             // 1. Start Date
             if (objResult[i].getValue(columns[1]) != null && objResult[i].getValue(columns[1]) != '- None -' && objResult[i].getValue(columns[1]) != 'NaN' && objResult[i].getValue(columns[1]) != 'undefined') {
               arrAuxiliar[1] = objResult[i].getValue(columns[1]);
@@ -2140,50 +800,30 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var ArrReturn = new Array();
       var cont = 0;
 
+      var busqueda = search.create({
+        type: 'customrecord_lmry_co_terceros_procesados',
+        filters: [
+          ['isinactive', 'is', 'F']
+        ],
+        columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
+      });
+
       if (feamultibook) {
-        if (featuresubs) {
-          var busqueda = search.create({
-            type: 'customrecord_lmry_co_terceros_procesados',
-            filters: [
-              ['isinactive', 'is', 'F'],
-              'AND',
-              ['custrecord_lmry_co_multibook_procesado', 'is', paramMultibook],
-              'AND',
-              ['custrecord_lmry_co_subsi_procesado', 'is', paramSubsidy]
-            ],
-            columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
-          });
-        } else {
-          var busqueda = search.create({
-            type: 'customrecord_lmry_co_terceros_procesados',
-            filters: [
-              ['isinactive', 'is', 'F'],
-              'AND',
-              ['custrecord_lmry_co_multibook_procesado', 'is', paramMultibook]
-            ],
-            columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
-          });
-        }
-      } else {
-        if (featuresubs) {
-          var busqueda = search.create({
-            type: 'customrecord_lmry_co_terceros_procesados',
-            filters: [
-              ['isinactive', 'is', 'F'],
-              'AND',
-              ['custrecord_lmry_co_subsi_procesado', 'is', paramSubsidy]
-            ],
-            columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
-          });
-        } else {
-          var busqueda = search.create({
-            type: 'customrecord_lmry_co_terceros_procesados',
-            filters: [
-              ['isinactive', 'is', 'F']
-            ],
-            columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
-          });
-        }
+        var multibookFilter = search.createFilter({
+          name: 'custrecord_lmry_co_multibook_procesado',
+          operator: search.Operator.IS,
+          values: [paramMultibook]
+        });
+        busqueda.filters.push(multibookFilter);
+      }
+
+      if (featuresubs) {
+        var subsidiaryFilter = search.createFilter({
+          name: 'custrecord_lmry_co_subsi_procesado',
+          operator: search.Operator.IS,
+          values: [paramSubsidy]
+        });
+        busqueda.filters.push(subsidiaryFilter);
       }
 
       var savedsearch = busqueda.run();
@@ -2199,37 +839,31 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
           for (var i = 0; i < objResult.length; i++) {
             var columns = objResult[i].columns;
-
             var arrAuxiliar = new Array();
-
             // 0. Internal ID
             if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN' && objResult[i].getValue(columns[0]) != 'undefined') {
               arrAuxiliar[0] = objResult[i].getValue(columns[0]);
             } else {
               arrAuxiliar[0] = '';
             }
-
             // 1. Año
             if (objResult[i].getValue(columns[1]) != null && objResult[i].getValue(columns[1]) != '- None -' && objResult[i].getValue(columns[1]) != 'NaN' && objResult[i].getValue(columns[1]) != 'undefined') {
               arrAuxiliar[1] = objResult[i].getValue(columns[1]);
             } else {
               arrAuxiliar[1] = '';
             }
-
             // 2. Multibook
             if (objResult[i].getValue(columns[2]) != null && objResult[i].getValue(columns[2]) != '- None -' && objResult[i].getValue(columns[2]) != 'NaN' && objResult[i].getValue(columns[2]) != 'undefined') {
               arrAuxiliar[2] = objResult[i].getValue(columns[2]);
             } else {
               arrAuxiliar[2] = '';
             }
-
             // 3. Subsidiaria
             if (objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '- None -' && objResult[i].getValue(columns[3]) != 'NaN' && objResult[i].getValue(columns[3]) != 'undefined') {
               arrAuxiliar[3] = objResult[i].getValue(columns[3]);
             } else {
               arrAuxiliar[3] = '';
             }
-
             // 4. PUC
             if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -' && objResult[i].getValue(columns[4]) != 'NaN' && objResult[i].getValue(columns[4]) != 'undefined') {
               arrAuxiliar[4] = objResult[i].getValue(columns[4]);
@@ -2254,15 +888,15 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       return ArrReturn;
     }
 
-    function ObtenerData(periodYearIniID, type, isSpecific, isForRecord, paramPeriodFin) {
+    function ObtenerData(periodYearIniID, isSpecific) {
       var intDMinReg = 0;
       var intDMaxReg = 1000;
-
       var DbolStop = false;
       var ArrReturn = new Array();
       var cont = 0;
 
       var savedsearch = search.load({
+        /*LatamReady - CO Balance Comp Terceros Data*/
         id: 'customsearch_lmry_co_bal_comp_terc_data'
       });
 
@@ -2274,24 +908,13 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         });
         savedsearch.filters.push(subsidiaryFilter);
       }
-
-      if (!isForRecord) {
-        if (paramEntity != null) {
-          //log.debug('filtrooooo');
-          var formulaEntity = 'CASE WHEN NVL({custcol_lmry_exp_rep_vendor_colum.internalid}, NVL({entity.id}, ' +
-            'NVL({customer.internalid}, NVL({vendor.internalid}, NVL({vendorline.internalid},' +
-            ' {employee.internalid}))))) = ' + paramEntity + ' THEN 1 ELSE 0 END';
-          //log.debug('formulaEntity', formulaEntity);
-          var entityFilter = search.createFilter({
-            name: 'formulatext',
-            formula: formulaEntity,
-            operator: search.Operator.IS,
-            values: [1]
-          });
-
-          savedsearch.filters.push(entityFilter);
-        }
-      }
+      // Movimientos por año
+      var periodFilter = search.createFilter({
+        name: 'postingperiod',
+        operator: search.Operator.IS,
+        values: [periodYearIniID]
+      });
+      savedsearch.filters.push(periodFilter);
 
       if (feamultibook) {
         var amountFilter = search.createFilter({
@@ -2301,42 +924,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           values: [1]
         });
         savedsearch.filters.push(amountFilter);
-      } else {
-        var amountFilter = search.createFilter({
-          name: 'formulanumeric',
-          operator: search.Operator.EQUALTO,
-          formula: "CASE WHEN NVL({debitamount},0) - NVL({creditamount},0) <> 0 THEN 1 ELSE 0 END",
-          values: [1]
-        });
-        savedsearch.filters.push(amountFilter);
-      }
 
-      if (type) {
-        // Movimientos
-        var periodFilter = search.createFilter({
-          name: 'postingperiod',
-          operator: search.Operator.IS,
-          values: [periodYearIniID]
-        });
-        savedsearch.filters.push(periodFilter);
-
-      } else {
-        // Saldo Anterior
-        var arrTemp = new Array();
-
-        for (var i = 0; i < periodYearIniID.length; i++) {
-          arrTemp[i] = periodYearIniID[i][0];
-        }
-
-        var periodFilter = search.createFilter({
-          name: 'postingperiod',
-          operator: search.Operator.ANYOF,
-          values: [arrTemp]
-        });
-        savedsearch.filters.push(periodFilter);
-      }
-
-      if (feamultibook) {
         if (isSpecific) {
           var specificFilter = search.createFilter({
             name: 'bookspecifictransaction',
@@ -2353,7 +941,8 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           });
 
           savedsearch.filters.push(specificFilter);
-
+          /* !!! ESTE FILTRO DEBERIA SER AFUERA DEL IF, REVISAR LUEGO SI EN VERDAD AFECTA.
+          EN EL MAP SE HACE UN FILTRADO POR EL PARAMPUC IGUAL*/
           var pucFilter = search.createFilter({
             name: 'formulatext',
             formula: '{account.custrecord_lmry_co_puc_d6_id}',
@@ -2393,13 +982,17 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           sort: search.Sort.ASC
         });
         savedsearch.columns.push(columnaActMulti);
-        //columna 7
-        // var pucColumn = search.createColumn({
-        //     name: 'custrecord_lmry_co_puc_d6_id',
-        //     join: 'account',
-        //     summary: 'GROUP'
-        // });
-        // savedsearch.columns.push(pucColumn);
+
+      } else {
+
+        var amountFilter = search.createFilter({
+          name: 'formulanumeric',
+          operator: search.Operator.EQUALTO,
+          formula: "CASE WHEN NVL({debitamount},0) - NVL({creditamount},0) <> 0 THEN 1 ELSE 0 END",
+          values: [1]
+        });
+        savedsearch.filters.push(amountFilter);
+
       }
 
       var searchresult = savedsearch.run();
@@ -2417,7 +1010,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
           for (var i = 0; i < intLength; i++) {
             var columns = objResult[i].columns;
-
             var arr = new Array();
 
             if (feamultibook || feamultibook == 'T') {
@@ -2427,14 +1019,12 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               } else {
                 arr[0] = '';
               }
-
               // 1. Debit
               if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -' && objResult[i].getValue(columns[4]) != 'NaN' && objResult[i].getValue(columns[4]) != 'undefined') {
                 arr[1] = objResult[i].getValue(columns[4]);
               } else {
                 arr[1] = '';
               }
-
               // 2. Credit
               if (objResult[i].getValue(columns[5]) != null && objResult[i].getValue(columns[5]) != '- None -' && objResult[i].getValue(columns[5]) != 'NaN' && objResult[i].getValue(columns[5]) != 'undefined') {
                 arr[2] = objResult[i].getValue(columns[5]);
@@ -2442,13 +1032,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
                 arr[2] = '';
               }
 
-              // 3. Entity
-              if (objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '' && objResult[i].getValue(columns[3]) != '- None -') {
-                arr[3] = objResult[i].getValue(columns[3]);
-              } else {
-                arr[3] = '';
-              }
-              //arr[4] = objResult[i].getValue(columns[7]);
             } else {
               // 0. Account
               if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN' && objResult[i].getValue(columns[0]) != 'undefined') {
@@ -2456,14 +1039,12 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               } else {
                 arr[0] = '';
               }
-
               // 1. Debit
               if (objResult[i].getValue(columns[1]) != null && objResult[i].getValue(columns[1]) != '- None -' && objResult[i].getValue(columns[1]) != 'NaN' && objResult[i].getValue(columns[1]) != 'undefined') {
                 arr[1] = objResult[i].getValue(columns[1]);
               } else {
                 arr[1] = '';
               }
-
               // 2. Credit
               if (objResult[i].getValue(columns[2]) != null && objResult[i].getValue(columns[2]) != '- None -' && objResult[i].getValue(columns[2]) != 'NaN' && objResult[i].getValue(columns[2]) != 'undefined') {
                 arr[2] = objResult[i].getValue(columns[2]);
@@ -2471,28 +1052,16 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
                 arr[2] = '';
               }
 
-              // 3. Entity
-              if (objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '' && objResult[i].getValue(columns[3]) != '- None -') {
-                arr[3] = objResult[i].getValue(columns[3]);
-              } else {
-                arr[3] = '';
-              }
+            }
+            // 3. Entity
+            if (objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '' && objResult[i].getValue(columns[3]) != '- None -') {
+              arr[3] = objResult[i].getValue(columns[3]);
+            } else {
+              arr[3] = '';
             }
 
-            if (paramEntity != null) {
-              if (!isForRecord) {
-                if (paramEntity == arr[3]) {
-                  ArrReturn[cont] = arr;
-                  cont++;
-                }
-              } else {
-                ArrReturn[cont] = arr;
-                cont++;
-              }
-            } else {
-              ArrReturn[cont] = arr;
-              cont++;
-            }
+            ArrReturn[cont] = arr;
+            cont++;
           }
 
           if (!DbolStop) {
@@ -2510,61 +1079,30 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
     function ParametrosYFeatures() {
 
-      paramMultibook = objContext.getParameter({
-        name: 'custscript_lmry_invbal_multibook'
-      });
-
-      paramRecordID = objContext.getParameter({
-        name: 'custscript_lmry_invbal_logid'
-      });
-
-      paramSubsidy = objContext.getParameter({
-        name: 'custscript_lmry_invbal_subsi'
-      });
-
-      paramPeriod = objContext.getParameter({
-        name: 'custscript_lmry_invbal_periodo'
-      });
-
-      paramPUC = objContext.getParameter({
-        name: 'custscript_lmry_invbal_lastpuc'
-      });
-
       if (paramPUC == null) {
         paramPUC = 1;
       }
-      log.debug('parametros:','Multibook -'+paramMultibook+' logID -'+paramRecordID+' Subsi -'+paramSubsidy+' periodo -'+paramPeriod+' PUC -'+paramPUC);
+      log.debug('parametros:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC);
 
       var period_temp = search.lookupFields({
         type: search.Type.ACCOUNTING_PERIOD,
         id: paramPeriod,
-        columns: ['startdate', 'isadjust']
+        columns: ['startdate', 'isadjust', 'enddate']
       });
 
-      periodstartdateIni = period_temp.startdate;
-      periodIniIsAdjust = period_temp.isadjust;
+      periodStartDate = period_temp.startdate;
+      periodIsAdjust = period_temp.isadjust;
 
       periodYearIni = format.parse({
-        value: periodstartdateIni,
+        value: periodStartDate,
         type: format.Type.DATE
       }).getFullYear();
 
       periodMonthIni = format.parse({
-        value: periodstartdateIni,
+        value: periodStartDate,
         type: format.Type.DATE
       }).getMonth();
 
-      featuresubs = runtime.isFeatureInEffect({
-        feature: "SUBSIDIARIES"
-      });
-
-      feamultibook = runtime.isFeatureInEffect({
-        feature: "MULTIBOOK"
-      });
-
-      featurejobs = runtime.isFeatureInEffect({
-        feature: "JOBS"
-      });
     }
 
     function ObtenerAñosFiscales() {
@@ -2605,16 +1143,13 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
           for (var i = 0; i < objResult.length; i++) {
             var columns = objResult[i].columns;
-
             var arrAuxiliar = new Array();
-
             // 0. Internal ID
             if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN' && objResult[i].getValue(columns[0]) != 'undefined') {
               arrAuxiliar[0] = objResult[i].getValue(columns[0]);
             } else {
               arrAuxiliar[0] = '';
             }
-
             // 1. Start Date
             if (objResult[i].getValue(columns[1]) != null && objResult[i].getValue(columns[1]) != '- None -' && objResult[i].getValue(columns[1]) != 'NaN' && objResult[i].getValue(columns[1]) != 'undefined') {
               arrAuxiliar[1] = objResult[i].getValue(columns[1]);
