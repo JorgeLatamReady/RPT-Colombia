@@ -41,6 +41,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var paramPUC = objContext.getParameter({
       name: 'custscript_test_invbal_lastpuc'
     });
+    var paramFileID = objContext.getParameter({
+      name: 'custscript_test_invbal_fileid'
+    });
 
     var ArrData = new Array();
 
@@ -71,6 +74,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     function getInputData() {
       try {
         log.debug('getInputData', 'getInputData');
+        log.debug('parametros:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC + ' FILE ID -' + paramFileID);
         ParametrosYFeatures();
         // Obtiene años ya procesados
         var ArrProcessedYears = ObtenerAñosProcesados();
@@ -191,9 +195,29 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         var arrSaldoAnterior = obtenerSaldoAnterior(ArrYears[ArrYears.length - 1][1]); //saldos del inicio de los tiempos hasta un año antes al periodo de generación.
         log.debug('arrSaldoAnterior',arrSaldoAnterior);
 
-        var idfile = savefile(ConvertirAString(arrSaldoAnterior));
-
-        //rellamarMapReduce(idfile);
+        if (paramFileID == null || paramFileID == '') {
+          var idfile = savefile(ConvertirAString(arrSaldoAnterior));
+        }else{
+          var file = fileModulo.load({
+            id: paramFileID
+          });
+          var lineas = file.getContents();
+          var idfile = savefile(lineas + ConvertirAString(arrSaldoAnterior));
+          log.debug('idfile',idfile);
+        }
+        // Obtener todos los periodos
+        var ArrAllPeriods = ObtenerPeriodos();
+        // Obtener periodos del año
+        var ArrYearPeriods = ObtenerPeriodosDelAño(ArrAllPeriods);
+        log.debug('Periodos faltantes a procesar, para puc '+paramPUC+':',ArrYearPeriods);
+        if (ArrYearPeriods.length != 0) {
+          ArrYearPeriods = ArrYearPeriods.map(function rem(e) {return e[0]});
+          ArrYearPeriods = ArrYearPeriods.join(',');
+          log.debug('ArrYearPeriods',ArrYearPeriods);
+        }else{
+          ArrYearPeriods = '';
+        }
+        llamarSchedule(idfile,ArrYearPeriods);
 
       } catch (err) {
         log.error('err', err);
@@ -610,28 +634,28 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       return str_return;
     }
 
-    function rellamarMapReduce(idfile) {
+    function llamarSchedule(idfile , periodMov) {
       var params = {};
-
-      params['custscript_lmry_co_terce_schdl_recordid'] = paramRecordID;
-      params['custscript_lmry_co_terce_schdl_period'] = paramPeriod;
-      params['custscript_lmry_co_terce_schdl_fileid'] = idfile;
-      params['custscript_lmry_co_terce_schdl_lastpuc'] = paramPUC;
+      params['custscript_test_co_invbalv2_logid'] = paramRecordID;
+      params['custscript_test_co_invbalv2_periodo'] = paramPeriod;
+      params['custscript_test_co_invbalv2_fileid'] = idfile;
+      params['custscript_test_co_invbalv2_puc'] = paramPUC;
+      params['custscript_test_co_invbalv2_period_res'] = periodMov;
 
       if (featuresubs) {
-        params['custscript_lmry_co_terce_schdl_subsi'] = paramSubsidy;
+        params['custscript_test_co_invbalv2_subsi'] = paramSubsidy;
       }
       if (feamultibook) {
-        params['custscript_lmry_co_terce_schdl_multi'] = paramMultibook
+        params['custscript_test_co_invbalv2_multibook'] = paramMultibook
       }
 
       var RedirecSchdl = task.create({
-        taskType: task.TaskType.MAP_REDUCE,
-        scriptId: 'customscript_lmry_co_bcmp_ter_schdl_v2_0',
-        deploymentId: 'customdeploy_lmry_co_bcmp_ter_schdl_v2_0',
+        taskType: task.TaskType.SCHEDULED_SCRIPT,
+        scriptId: 'customscript_test_co_inv_bal_v2_schdl',
+        deploymentId: 'customdeploy_test_co_inv_bal_v2_schdl',
         params: params
       });
-
+      log.debug('llamando a schedule');
       RedirecSchdl.submit();
     }
 

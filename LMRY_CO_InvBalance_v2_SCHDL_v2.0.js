@@ -21,18 +21,17 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
     //Tamaño
     var file_size = 7340032;
-
     // Nombre del Reporte
     var namereport = "Reportes Libro de Inventario y Balance";
     var LMRY_script = 'LMRY CO Reportes Libro de Inventario y Balance SCHDL 2.0';
-
     //Parametros
-    var paramsubsidi = '';
-    var paramperiodo = '';
-    var paramidrpt = '';
+    var paramSubsidi = '';
+    var paramPeriodo = '';
+    var paramPeriodsRestantes = '';
+    var paramLogId = '';
     var paramMulti = '';
-    var paramCont = '';
-    var paramBucle = '';
+    var paramPUC = '';
+    var paramFile = '';
 
     //Control de Reporte
     var periodstartdate = '';
@@ -43,10 +42,12 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
     var xlsString = '';
 
-    var ArrMontosAntesSpecific = new Array();
-    var ArrSaldoAnterior = new Array();
+    var ArrMovimientosSpecific = new Array();
+    var ArrMovimientos = new Array();
+    var SaldoAnteriorPUC = new Array();
     var arrAccountingContext = new Array();
     var ArrAccounts = new Array();
+    var SaldoAnterior = new Array();
 
     var montoTotal1Dig = 0;
     var montoTotal2Dig = 0;
@@ -59,10 +60,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
     var ip;
 
     var multibookName = '';
-    var ArrPeriodos = new Array();
 
     var language;
     var Fecha_Corte_al;
+    var PeriodosRestantes = new Array();
 
     /* ***********************************************
      * Arreglo con la structura de la tabla log
@@ -80,67 +81,168 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
     var featSubsi = null;
     var featMulti = null;
 
-    //var featuremultib = objContext.getFeature('MULTIBOOKMULTICURR');
-
-    var result_f;
-
     function execute(context) {
-
-      try {
+      //try {
         ObtenerParametrosYFeatures();
+        PeriodosRestantes = paramPeriodsRestantes.split(',');
+        //PeriodosRestantes = PeriodosRestantes.map(function e(p) {return Number(p)});
+        log.debug('PeriodosRestantes',PeriodosRestantes);
+        //obtener saldo anterior
+        obtenerDataAnterior(); //del archivo temporal, solo lineas con el puc actual
+        log.debug('SaldoAnteriorPUC',SaldoAnteriorPUC);
+        //obtener Movimientos
+        if (PeriodosRestantes.length != 0) {
 
-        ObtenerDatosSubsidiaria();
-
-        if (featMulti) {
-          ArrAccounts = ObtenerCuentas();
-
-          if (!ValidatePrimaryBook() || ValidatePrimaryBook() != 'T') {
-            var array_context = ObtieneAccountingContext();
-          }
-        }
-
-        ArrSaldoAnterior = ObtieneTransacciones();
-        if (featMulti) {
-          ArrSaldoAnterior = SetPUCMultibook(ArrSaldoAnterior);
-        }
-
-        if (featMulti) {
-          ArrMontosAntesSpecific = ObtieneSpecificTransaction();
-
-          if (ArrMontosAntesSpecific.length != 0) {
-            JuntarArreglosSpecificos(ArrSaldoAnterior, ArrMontosAntesSpecific);
-          }
-        }
-
-
-        if (featMulti) {
-          if (!ValidatePrimaryBook() || ValidatePrimaryBook() != 'T') {
-            CambioDeCuentas(ArrSaldoAnterior);
-          }
-        }
-
-        if (ArrSaldoAnterior.length != 0) {
-
-          if (ArrSaldoAnterior.length > 1) {
-            ArrSaldoAnterior = OrdenarCuentas(ArrSaldoAnterior);
-            //log.debug('Ordenar cuentas',ArrSaldoAnterior);
-            ArrSaldoAnterior = AgruparCuentas(ArrSaldoAnterior);
+          ArrMovimientos = ObtieneTransacciones();
+          log.debug('ArrMovimientos',ArrMovimientos);
+          if (featMulti) {
+            ArrAccounts = ObtenerCuentas();
+            ArrMovimientos = SetPUCMultibook(ArrMovimientos); //usa ArrAccounts
+            log.debug('ArrMovimientos',ArrMovimientos);
           }
 
-          LlenarArregloDosDigitos(ArrSaldoAnterior);
+          if (featMulti) {
+            ArrMovimientosSpecific = ObtieneSpecificTransaction();
+            ArrMovimientos = ArrMovimientos.concat(ArrMovimientosSpecific);
 
-          LlenarArregloUnDigitos(ArrSaldoAnterior);
+            if (!ValidatePrimaryBook() || ValidatePrimaryBook() != 'T') {
+              var array_context = ObtieneAccountingContext();
+              CambioDeCuentas(ArrMovimientos); //usa arrAccountingContext
+            }
+          }
+
+          if (ArrMovimientos.length > 1) {
+            log.debug('Antes Ordenar cuentas', ArrMovimientos);
+            ArrMovimientos = OrdenarCuentas(ArrMovimientos);
+            log.debug('Ordenar cuentas', ArrMovimientos);
+            ArrMovimientos = AgruparCuentas(ArrMovimientos);
+            log.debug('Agrupar cuentas', ArrMovimientos); //agrupa por cuatro digitos
+          }
+        }
+        //juntar arreglos de movimiento y saldo anterior
+        var arrTotal = juntarSaldoYMoviemiento(SaldoAnteriorPUC, ArrMovimientos);
+        log.debug('arrTotal', arrTotal);
+        if (paramPUC == '9') {
+          ObtenerDatosSubsidiaria();
+          log.debug('procesamiento de excel');
+          //ordenar data por PUC de 2 y 1 digito
+          //Generar excel final del reporte
+          //GenerarExcel(ArrMovimientos);
+        } else {
+          var dataTotal = SaldoAnterior.concat(arrTotal);
+          //actualizar archivo temporal
+          if (dataTotal.length != 0) {
+            var nameFile = 'INVENTARIO_BALANCE_TEMPORAL';
+            saveFile(formatear(dataTotal), nameFile, 'txt');
+          }else{
+            log.debug('No hay data ni de saldos ni de movimientos.','No se actualiza archivo.')
+          }
+          //llamar de nuevo a map reduce con el siguiente numero PUC
+          paramPUC++;
+          //if (paramPUC != 3) {
+            llamarMapReduce();
+          //}
         }
 
-        GenerarExcel(ArrSaldoAnterior);
-
-
-      } catch (err) {
+      /*} catch (err) {
         libreria.sendMail(LMRY_script, ' [ execute ] ' + err);
         //var varMsgError = 'No se pudo procesar el Schedule.';
+      }*/
 
+    }
+
+    function llamarMapReduce(){
+      var params = {};
+      params['custscript_test_invbal_logid'] = paramLogId;
+      params['custscript_test_invbal_periodo'] = paramPeriodo;
+      params['custscript_test_invbal_fileid'] = paramFile;
+      params['custscript_test_invbal_lastpuc'] = paramPUC;
+      if (featSubsi) {
+        params['custscript_test_invbal_subsi'] = paramSubsidi;
+      }
+      if (featMulti) {
+        params['custscript_test_invbal_multibook'] = paramMulti;
       }
 
+      var RedirecSchdl = task.create({
+        taskType: task.TaskType.MAP_REDUCE,
+        scriptId: 'customscript_test_co_inv_bal_mprd',
+        deploymentId: 'customdeploy_test_co_inv_bal_mprd',
+        params: params
+      });
+      log.debug('llamando a map reduce para PUC', params);
+      RedirecSchdl.submit();
+    }
+
+    function formatear(data){
+      var strTotal = '';
+      for (var i = 0; i < data.length; i++) {
+        strTotal += data[i].join('|') + '\r\n';
+      }
+      return strTotal;
+    }
+
+    function juntarSaldoYMoviemiento(arrDataSaldo, arrDataMovimiento) {
+      var arrTotal = arrDataSaldo;
+
+      for (var i = 0; i < arrTotal.length; i++) {
+        var cant = arrDataMovimiento.length;
+        var j = 0;
+        while (j < cant) {
+          if (arrTotal[i][0] == arrDataMovimiento[j][0]) {
+            arrTotal[i][3] = Number(arrTotal[i][3]) + Number(arrDataMovimiento[j][7]);
+            arrDataMovimiento.splice(j, 1);
+            cant--;
+            break;
+          } else {
+            j++;
+          }
+        }
+      }
+      log.debug('arrTotal',arrTotal);
+      log.debug('arrDataMovimiento',arrDataMovimiento);
+      for (var i = 0; i < arrDataMovimiento.length; i++) {
+        var arrMovimientosN = new Array();
+        arrMovimientosN.push(arrDataMovimiento[i][0]);
+        arrMovimientosN.push('');
+        arrMovimientosN.push('');
+        arrMovimientosN.push(Number(arrDataMovimiento[i][7]));
+        arrTotal.push(arrMovimientosN);
+      }
+      /*ArrMovimientos.map( e => {
+        e[1] = '';
+        e[2] = '';
+        e[3] = e[7];
+        return (e.splice(4));
+      });
+      arrTotal = arrTotal.concat(ArrMovimientos);*/
+      arrTotal = OrdenarCuentas(arrTotal);
+      return arrTotal;
+    }
+
+    function obtenerDataAnterior() {
+      if (paramFile != '' && paramFile != null) {
+        var fileObj = fileModulo.load({
+          id: paramFile
+        });
+        var lineas = fileObj.getContents()
+        lineas = lineas.split('\r\n');
+
+        for (var i = 0; i < lineas.length; i++) {
+          var detail = lineas[i].split('|');
+          //log.debug('detail',detail);
+          if (detail[0] != '') {
+            if (detail[0].charAt(0) == paramPUC) {
+              SaldoAnteriorPUC.push(detail);
+            } else {
+              SaldoAnterior.push(detail);
+            }
+          }
+
+        }
+      } else {
+        log.debug('Alerta', 'No existe parametro de archivo');
+      }
     }
 
     function SetPUCMultibook(ArrTemp) {
@@ -174,7 +276,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       var busqueda = search.create({
         type: search.Type.ACCOUNT,
         filters: [
-          ['isinactive', 'is', 'F'], 'and', ['subsidiary', 'is', paramsubsidi], 'and', ['custrecord_lmry_co_puc_d4_id', 'isnotempty', '']
+          ['isinactive', 'is', 'F'], 'and', ['subsidiary', 'is', paramSubsidi], 'and', ['custrecord_lmry_co_puc_d4_id', 'isnotempty', '']
         ],
         columns: ['internalid', 'number', 'custrecord_lmry_co_puc_d1_id', 'custrecord_lmry_co_puc_d1_description', 'custrecord_lmry_co_puc_d2_id', 'custrecord_lmry_co_puc_d2_description', 'custrecord_lmry_co_puc_d4_id', 'custrecord_lmry_co_puc_d4_description', 'custrecord_lmry_co_puc_d6_id', 'custrecord_lmry_co_puc_d6_description']
       });
@@ -191,9 +293,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
           for (var i = 0; i < objResult.length; i++) {
             var columns = objResult[i].columns;
-
             var arrAuxiliar = new Array();
-
             //0. Internal Id
             if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '')
               arrAuxiliar[0] = objResult[i].getValue(columns[0]);
@@ -331,7 +431,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           xlsString += '<Row></Row>';
           xlsString += '<Row>';
           xlsString += '<Cell></Cell>';
-          // nlapiLogExecution('ERROR', 'paramperiodo-> ', paramperiodo);
+          // nlapiLogExecution('ERROR', 'paramPeriodo-> ', paramPeriodo);
 
           xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">Razon Social: ' + companyname + '</Data></Cell>';
           xlsString += '</Row>';
@@ -397,7 +497,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
             outputEncoding: encode.Encoding.BASE_64
           });
 
-          SaveFile();
+          saveFile();
         }
       } else {
         RecordNoData();
@@ -560,12 +660,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       montoTotal1Dig = redondear(montoTotal1Dig);
     }
 
-    function JuntarArreglosSpecificos(arrPadre, arrHijos) {
-      for (var i = 0; i < ArrMontosAntesSpecific.length; i++) {
-        ArrSaldoAnterior.push(ArrMontosAntesSpecific[i]);
-      }
-    }
-
     function ObtieneSpecificTransaction() {
       // Control de Memoria
       var intDMaxReg = 1000;
@@ -578,31 +672,32 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       //var _cont = 0;
 
       var savedsearch = search.load({
+        /*LatamReady - CO Inventory Book and Balance L.EspecMulti*/
         id: 'customsearch_lmry_co_invent_balanc_liesp'
       });
+
+      var pucFilter = search.createFilter({
+        name: 'formulatext',
+        formula: '{account.custrecord_lmry_co_puc_d4_id}',
+        operator: search.Operator.STARTSWITH,
+        values: [paramPUC]
+      });
+      savedsearch.filters.push(pucFilter);
 
       if (featSubsi) {
         var subsidiaryFilter = search.createFilter({
           name: 'subsidiary',
           operator: search.Operator.IS,
-          values: [paramsubsidi]
+          values: [paramSubsidi]
         });
         savedsearch.filters.push(subsidiaryFilter);
       }
 
-      var periodFields = search.lookupFields({
-        type: search.Type.ACCOUNTING_PERIOD,
-        id: paramperiodo,
-        columns: ['enddate']
-      });
-
-      var periodEndDate = periodFields.enddate;
-
       var periodFilter = search.createFilter({
-        name: 'trandate',
+        name: 'postingperiod',
         join: 'transaction',
-        operator: search.Operator.ONORBEFORE,
-        values: [periodEndDate]
+        operator: search.Operator.ANYOF,
+        values: PeriodosRestantes
       });
       savedsearch.filters.push(periodFilter);
 
@@ -613,7 +708,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         values: [paramMulti]
       });
       savedsearch.filters.push(multibookFilter);
-
 
       var searchresult = savedsearch.run();
 
@@ -630,23 +724,21 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           for (var i = 0; i < intLength; i++) {
             var columns = objResult[i].columns;
             arrQuiebre = new Array();
-            if (Number(objResult[i].getValue(columns[6])) <= Number(paramperiodo)) {
-              for (var col = 0; col < columns.length; col++) {
-                if (col == 8) {
-                  arrQuiebre[col] = objResult[i].getText(columns[col]);
-                } else if (col == 7) {
 
-                  arrQuiebre[col] = objResult[i].getValue(columns[col]) * objResult[i].getValue(columns[10]);
-
-                } else {
-                  arrQuiebre[col] = objResult[i].getValue(columns[col]);
-                }
+            for (var col = 0; col < columns.length; col++) {
+              if (col == 8) {
+                arrQuiebre[col] = objResult[i].getText(columns[col]);
+              } else if (col == 7) {
+                arrQuiebre[col] = objResult[i].getValue(columns[col]) * objResult[i].getValue(columns[10]);
+              } else {
+                arrQuiebre[col] = objResult[i].getValue(columns[col]);
               }
-
-              arrCuatroDigitos[_contg] = arrQuiebre;
-              _contg++;
             }
+
+            arrCuatroDigitos[_contg] = arrQuiebre;
+            _contg++;
           }
+
           intDMinReg = intDMaxReg;
           intDMaxReg += 1000;
           if (intLength < 1000) {
@@ -658,9 +750,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       }
 
       return arrCuatroDigitos;
-
     }
-
 
     function ObtieneTransacciones() {
       // Control de Memoria
@@ -674,31 +764,31 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       //var _cont = 0;
 
       var savedsearch = search.load({
+        /*LatamReady - CO Inventory Book and Balance with L.Espec*/
         id: 'customsearch_lmry_co_invent_balanc_trale'
       });
+
+      var pucFilter = search.createFilter({
+        name: 'formulatext',
+        formula: '{account.custrecord_lmry_co_puc_d4_id}',
+        operator: search.Operator.STARTSWITH,
+        values: [paramPUC]
+      });
+      savedsearch.filters.push(pucFilter);
 
       if (featSubsi) {
         var subsidiaryFilter = search.createFilter({
           name: 'subsidiary',
           operator: search.Operator.IS,
-          values: [paramsubsidi]
+          values: [paramSubsidi]
         });
         savedsearch.filters.push(subsidiaryFilter);
       }
 
-      var periodFields = search.lookupFields({
-        type: search.Type.ACCOUNTING_PERIOD,
-        id: paramperiodo,
-        columns: ['startdate']
-      });
-
-      var periodStartDate = periodFields.startdate;
-
       var periodFilter = search.createFilter({
-        name: 'startdate',
-        join: 'accountingperiod',
-        operator: search.Operator.ONORBEFORE,
-        values: [periodStartDate]
+        name: 'postingperiod',
+        operator: search.Operator.ANYOF,
+        values: PeriodosRestantes
       });
       savedsearch.filters.push(periodFilter);
 
@@ -717,7 +807,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           values: ['F']
         });
         savedsearch.filters.push(bookspecificFitler);
-
         //11.
         var exchangerateColum = search.createColumn({
           name: 'formulacurrency',
@@ -725,7 +814,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           formula: "{accountingtransaction.exchangerate}"
         });
         savedsearch.columns.push(exchangerateColum);
-
         //12.
         var balanceColumn = search.createColumn({
           name: 'formulacurrency',
@@ -733,7 +821,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           formula: "NVL({accountingtransaction.debitamount},0) - NVL({accountingtransaction.creditamount},0)"
         });
         savedsearch.columns.push(balanceColumn);
-
         //13.
         var multiAccountColumn = search.createColumn({
           name: 'account',
@@ -760,9 +847,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
             arrQuiebre = new Array();
 
             for (var col = 0; col < columns.length; col++) {
-              if (col == 8) {
-                arrQuiebre[col] = objResult[i].getText(columns[col]);
-              } else if (col == 7) {
+              if (col == 7) {
                 if (featMulti) {
                   arrQuiebre[col] = objResult[i].getValue(columns[12]);
                 } else {
@@ -807,7 +892,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         var subsidiaryFilter = search.createFilter({
           name: 'subsidiary',
           operator: search.Operator.IS,
-          values: [paramsubsidi]
+          values: [paramSubsidi]
         });
         savedsearch.filters.push(subsidiaryFilter);
       }
@@ -881,8 +966,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
                 arrAccountingContext[contador_auxiliar] = arrAuxiliar;
                 contador_auxiliar++;
               }
-
-
             }
           }
 
@@ -980,165 +1063,89 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
     //-------------------------------------------------------------------------------------------------------
     // Graba el archivo en el Gabinete de Archivos
     //-------------------------------------------------------------------------------------------------------
-    function SaveFile() {
-
+    function saveFile(data, nameFile, extension) {
       var objContext = runtime.getCurrentScript();
       // Ruta de la carpeta contenedora
       var FolderId = objContext.getParameter({
         name: 'custscript_lmry_file_cabinet_rg_co'
       });
-
       // Almacena en la carpeta de Archivos Generados
       if (FolderId != '' && FolderId != null) {
-        // Genera el nombre del archivo
-        var fileext;
-        var NameFile;
-
-        // Crea el archivo
-        fileext = '.xls';
-        if (featMulti) {
-          if (Number(paramCont) == 0) {
-            NameFile = Name_File() + '_' + paramMulti + fileext;
-          } else {
-            NameFile = Name_File() + '_' + paramMulti + '_' + paramCont + fileext;
-          }
-        } else {
-          if (Number(paramCont) == 0) {
-            NameFile = Name_File() + fileext;
-          } else {
-            NameFile = Name_File() + '_' + paramCont + fileext;
-          }
-        }
-
         // Crea el archivo.xls
-        var file = fileModulo.create({
-          name: NameFile,
-          fileType: fileModulo.Type.EXCEL,
-          contents: Final_string,
-          folder: FolderId
-        });
-
+        if (extension == 'txt') {
+          var file = fileModulo.create({
+            name: nameFile + '.' + extension,
+            fileType: fileModulo.Type.PLAINTEXT,
+            contents: data,
+            folder: FolderId
+          });
+        } else {
+          var file = fileModulo.create({
+            name: nameFile + '.' + extension,
+            fileType: fileModulo.Type.EXCEL,
+            contents: data,
+            folder: FolderId
+          });
+        }
         // Termina de grabar el archivo
         var idfile = file.save();
-
+        log.debug('Se actualizo archivo temporal con id: ',idfile);
         // Trae URL de archivo generado
-        var idfile2 = fileModulo.load({
-          id: idfile
-        });
-
-        // Obtenemos de las prefencias generales el URL de Netsuite (Produccion o Sandbox)
-        var getURL = objContext.getParameter({
-          name: 'custscript_lmry_netsuite_location'
-        });
-
-        var urlfile = '';
-
-        if (getURL != '' && getURL != '') {
-          urlfile += 'https://' + getURL;
-        }
-        urlfile += idfile2.url;
-
-        //Genera registro personalizado como log
-        if (idfile) {
-
-          var usuarioTemp = runtime.getCurrentUser();
-          var id = usuarioTemp.id;
-          var employeename = search.lookupFields({
-            type: search.Type.EMPLOYEE,
-            id: id,
-            columns: ['firstname', 'lastname']
+        if (extension == 'xls') {
+          var idfile2 = fileModulo.load({
+            id: idfile
           });
-          var usuario = employeename.firstname + ' ' + employeename.lastname;
-          if (Number(paramCont) > 1) {
-            var record = recordModulo.create({
-              type: 'customrecord_lmry_co_rpt_generator_log',
+          // Obtenemos de las prefencias generales el URL de Netsuite (Produccion o Sandbox)
+          var getURL = objContext.getParameter({
+            name: 'custscript_lmry_netsuite_location'
+          });
 
+          var urlfile = '';
+          if (getURL != '' && getURL != '') {
+            urlfile += 'https://' + getURL;
+          }
+          urlfile += idfile2.url;
+
+          //Genera registro personalizado como log
+          if (idfile) {
+            var usuarioTemp = runtime.getCurrentUser();
+            var id = usuarioTemp.id;
+            var employeename = search.lookupFields({
+              type: search.Type.EMPLOYEE,
+              id: id,
+              columns: ['firstname', 'lastname']
             });
+            var usuario = employeename.firstname + ' ' + employeename.lastname;
 
-            //Nombre de Archivo
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_rg_name',
-              value: NameFile
-            });
-
-            //Periodo
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_rg_postingperiod',
-              value: periodname
-            });
-
-            //Nombre de Reporte
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_rg_transaction',
-              value: 'CO - Libro de Inventario y Balance 2.0'
-            });
-
-            //Nombre de Subsidiaria
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_rg_subsidiary',
-              value: companyname
-            });
-
-            //Url de Archivo
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_rg_url_file',
-              value: urlfile
-            });
-
-            //Multibook
-            if (featMulti || featMulti == 'T') {
-              record.setValue({
-                fieldId: 'custrecord_lmry_co_rg_multibook',
-                value: multibookName
-              });
-            }
-
-            //Creado Por
-            record.setValue({
-              fieldId: 'custrecord_lmry_co_rg_employee',
-              value: usuario
-            });
-
-            var recordId = record.save();
-
-            // Envia mail de conformidad al usuario
-            libreria.sendrptuser('CO - Libro de Inventario y Balance 2.0', 3, NameFile);
-          } else {
             var record = recordModulo.load({
               type: 'customrecord_lmry_co_rpt_generator_log',
-              id: paramidrpt
+              id: paramLogId
             });
-
             //Nombre de Archivo
             record.setValue({
               fieldId: 'custrecord_lmry_co_rg_name',
               value: NameFile
             });
-
             //Periodo
             record.setValue({
               fieldId: 'custrecord_lmry_co_rg_postingperiod',
               value: periodname
             });
-
             //Nombre de Reporte
             record.setValue({
               fieldId: 'custrecord_lmry_co_rg_transaction',
               value: 'CO - Libro de Inventario y Balance 2.0'
             });
-
             //Nombre de Subsidiaria
             record.setValue({
               fieldId: 'custrecord_lmry_co_rg_subsidiary',
               value: companyname
             });
-
             //Url de Archivo
             record.setValue({
               fieldId: 'custrecord_lmry_co_rg_url_file',
               value: urlfile
             });
-
             //Multibook
             if (featMulti || featMulti == 'T') {
               record.setValue({
@@ -1146,7 +1153,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
                 value: multibookName
               });
             }
-
             //Creado Por
             record.setValue({
               fieldId: 'custrecord_lmry_co_rg_employee',
@@ -1154,11 +1160,11 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
             });
 
             var recordId = record.save();
-
             // Envia mail de conformidad al usuario
             libreria.sendrptuser('CO - Libro de Inventario y Balance 2.0', 3, NameFile);
           }
         }
+
       } else {
         // Debug
         log.error({
@@ -1183,7 +1189,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
       var record = recordModulo.load({
         type: 'customrecord_lmry_co_rpt_generator_log',
-        id: paramidrpt
+        id: paramLogId
       });
 
       //Nombre de Archivo
@@ -1233,8 +1239,8 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         type: config.Type.COMPANY_INFORMATION
       });
       if (featSubsi) {
-        companyname = ObtainNameSubsidiaria(paramsubsidi);
-        companyruc = ObtainFederalIdSubsidiaria(paramsubsidi);
+        companyname = ObtainNameSubsidiaria(paramSubsidi);
+        companyruc = ObtainFederalIdSubsidiaria(paramSubsidi);
 
       } else {
         companyruc = configpage.getFieldValue('employerid');
@@ -1354,38 +1360,27 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       //Parametros
       var objContext = runtime.getCurrentScript();
 
-      paramsubsidi = objContext.getParameter({
-        name: 'custscript_lmry_co_subsi_invbalance'
+      paramSubsidi = objContext.getParameter({
+        name: 'custscript_test_co_invbalv2_subsi'
       });
-
-      paramperiodo = objContext.getParameter({
-        name: 'custscript_lmry_co_periodo_invbalance'
+      paramPeriodo = objContext.getParameter({
+        name: 'custscript_test_co_invbalv2_periodo'
       });
-
+      paramPeriodsRestantes = objContext.getParameter({
+        name: 'custscript_test_co_invbalv2_period_res'
+      });
       paramMulti = objContext.getParameter({
-        name: 'custscript_lmry_co_multibook_invbalance'
+        name: 'custscript_test_co_invbalv2_multibook'
       });
-
-      paramidrpt = objContext.getParameter({
-        name: 'custscript_lmry_co_idrpt_invbalance'
+      paramLogId = objContext.getParameter({
+        name: 'custscript_test_co_invbalv2_logid'
       });
-
-      paramCont = objContext.getParameter({
-        name: 'custscript_lmry_co_cont_invbalance'
+      paramPUC = objContext.getParameter({
+        name: 'custscript_test_co_invbalv2_puc' //primer digito
       });
-
-      paramBucle = objContext.getParameter({
-        name: 'custscript_lmry_co_bucle_invbalance'
+      paramFile = objContext.getParameter({
+        name: 'custscript_test_co_invbalv2_fileid'
       });
-
-      if (paramCont == null) {
-        paramCont = 0;
-      }
-
-      if (paramBucle == null) {
-        paramBucle = 0;
-      }
-
       //Features
       featSubsi = runtime.isFeatureInEffect({
         feature: "SUBSIDIARIES"
@@ -1396,14 +1391,14 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
       log.error({
         title: 'ENTROfeats',
-        details: paramidrpt + ' ' + paramMulti + ' ' + paramsubsidi + ' ' + paramperiodo
+        details: paramLogId + ' ' + paramMulti + ' ' + paramSubsidi + ' ' + paramPeriodo + ' ' + paramPeriodsRestantes + ' ' + paramPUC + ' ' + paramFile
       });
 
 
       //Period enddate para el nombre del libro
       var period_temp = search.lookupFields({
         type: search.Type.ACCOUNTING_PERIOD,
-        id: paramperiodo,
+        id: paramPeriodo,
         columns: ['periodname', 'startdate', 'enddate']
       });
 
