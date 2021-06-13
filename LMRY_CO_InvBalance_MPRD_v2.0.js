@@ -116,7 +116,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               }
             }
 
-            //actualizarThirdProc(ArrYears[i][1]);
+            actualizarThirdProc(ArrYears[i][1]);
           }
         }
         log.debug('ArrData', ArrData);
@@ -156,10 +156,10 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           columns: ['custrecord_lmry_co_puc_d6_id']
         });
 
-        var firtsDigitPUC = ((account_lookup.custrecord_lmry_co_puc_d6_id)[0].text).charAt(0);
+        var digitsPUC = (account_lookup.custrecord_lmry_co_puc_d6_id)[0].text;
 
-        if (firtsDigitPUC == paramPUC) {
-          //actualizarThirdData(arrTemp, firtsDigitPUC);
+        if (digitsPUC.charAt(0) == paramPUC) {
+          actualizarThirdData(arrTemp, digitsPUC);
         }
       } catch (err) {
         //log.error('err', err);
@@ -386,6 +386,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       }
 
       record.save();
+      log.debug('Se actualizo third processed', 'anio: '+anioProcesado + ' puc: ' + paramPUC);
     }
 
     function actualizarThirdData(arrTemp, puc) {
@@ -456,6 +457,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       }
 
       var id = record.save();
+      log.debug('Se actualizo third data', 'entity: '+JSON.stringify(json_entity));
     }
 
     function AgruparPorCuenta(ArrTemp) {
