@@ -212,8 +212,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         log.debug('Periodos faltantes a procesar, para puc '+paramPUC+':',ArrYearPeriods);
         if (ArrYearPeriods.length != 0) {
           ArrYearPeriods = ArrYearPeriods.map(function rem(e) {return e[0]});
-          ArrYearPeriods = ArrYearPeriods.join(',');
-          log.debug('ArrYearPeriods',ArrYearPeriods);
+          log.debug('ArrYearPeriods total',ArrYearPeriods);
+          ArrYearPeriods = ArrYearPeriods[0] + ',' + ArrYearPeriods[ArrYearPeriods.length - 1];
+          log.debug('ArrYearPeriods total',ArrYearPeriods);
         }else{
           ArrYearPeriods = '';
         }
@@ -238,7 +239,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           value: ArrAllPeriods[i][1],
           type: format.Type.DATE
         }).getMonth();
-
+        //PARA EL RPT INVENTARIO Y BALANCE 2.0 , LOS PERIODOS RESTANTES SERIAN DESDE INICIO DE AÑO HASTA EL MES DE GENERACION.
         if (periodIsAdjust) {
           if (tempYear == periodYearIni && tempMonth <= periodMonthIni && paramPeriod != ArrAllPeriods[i][0]) {
             var arr = new Array();
@@ -247,7 +248,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             ArrReturn.push(arr);
           }
         } else {
-          if (tempYear == periodYearIni && tempMonth < periodMonthIni) {
+          if (tempYear == periodYearIni && tempMonth <= periodMonthIni) {
             var arr = new Array();
             arr[0] = ArrAllPeriods[i][0];
             arr[1] = ArrAllPeriods[i][1];

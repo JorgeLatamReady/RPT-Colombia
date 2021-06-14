@@ -64,6 +64,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
     var language;
     var Fecha_Corte_al;
     var PeriodosRestantes = new Array();
+    var Pucs = new Array();
 
     /* ***********************************************
      * Arreglo con la structura de la tabla log
@@ -83,66 +84,70 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
     function execute(context) {
       //try {
-        ObtenerParametrosYFeatures();
-        PeriodosRestantes = paramPeriodsRestantes.split(',');
-        //PeriodosRestantes = PeriodosRestantes.map(function e(p) {return Number(p)});
-        log.debug('PeriodosRestantes',PeriodosRestantes);
-        //obtener saldo anterior
-        obtenerDataAnterior(); //del archivo temporal, solo lineas con el puc actual
-        log.debug('SaldoAnteriorPUC',SaldoAnteriorPUC);
-        //obtener Movimientos
-        if (PeriodosRestantes.length != 0) {
+      ObtenerParametrosYFeatures();
+      PeriodosRestantes = paramPeriodsRestantes.split(',');
+      //PeriodosRestantes = PeriodosRestantes.map(function e(p) {return Number(p)});
+      //obtener saldo anterior
+      obtenerDataAnterior(); //del archivo temporal, solo lineas con el puc actual
+      log.debug('SaldoAnteriorPUC', SaldoAnteriorPUC);
+      //obtener Movimientos
+      if (PeriodosRestantes.length != 0) {
 
-          ArrMovimientos = ObtieneTransacciones();
-          log.debug('ArrMovimientos',ArrMovimientos);
-          if (featMulti) {
-            ArrAccounts = ObtenerCuentas();
-            ArrMovimientos = SetPUCMultibook(ArrMovimientos); //usa ArrAccounts
-            log.debug('ArrMovimientos',ArrMovimientos);
-          }
+        ArrMovimientos = ObtieneTransacciones();
+        log.debug('ArrMovimientos', ArrMovimientos);
+        if (featMulti) {
+          ArrAccounts = ObtenerCuentas();
+          ArrMovimientos = SetPUCMultibook(ArrMovimientos); //usa ArrAccounts
+          log.debug('ArrMovimientos SetPUCMultibook', ArrMovimientos);
+        }
 
-          if (featMulti) {
-            ArrMovimientosSpecific = ObtieneSpecificTransaction();
-            ArrMovimientos = ArrMovimientos.concat(ArrMovimientosSpecific);
+        if (featMulti) {
+          ArrMovimientosSpecific = ObtieneSpecificTransaction();
+          ArrMovimientos = ArrMovimientos.concat(ArrMovimientosSpecific);
 
-            if (!ValidatePrimaryBook() || ValidatePrimaryBook() != 'T') {
-              var array_context = ObtieneAccountingContext();
-              CambioDeCuentas(ArrMovimientos); //usa arrAccountingContext
-            }
-          }
-
-          if (ArrMovimientos.length > 1) {
-            log.debug('Antes Ordenar cuentas', ArrMovimientos);
-            ArrMovimientos = OrdenarCuentas(ArrMovimientos);
-            log.debug('Ordenar cuentas', ArrMovimientos);
-            ArrMovimientos = AgruparCuentas(ArrMovimientos);
-            log.debug('Agrupar cuentas', ArrMovimientos); //agrupa por cuatro digitos
+          if (!ValidatePrimaryBook() || ValidatePrimaryBook() != 'T') {
+            var array_context = ObtieneAccountingContext();
+            CambioDeCuentas(ArrMovimientos); //usa arrAccountingContext
           }
         }
-        //juntar arreglos de movimiento y saldo anterior
-        var arrTotal = juntarSaldoYMoviemiento(SaldoAnteriorPUC, ArrMovimientos);
-        log.debug('arrTotal', arrTotal);
-        if (paramPUC == '9') {
-          ObtenerDatosSubsidiaria();
-          log.debug('procesamiento de excel');
-          //ordenar data por PUC de 2 y 1 digito
-          //Generar excel final del reporte
-          //GenerarExcel(ArrMovimientos);
+
+        if (ArrMovimientos.length > 1) {
+          //log.debug('Antes Ordenar cuentas', ArrMovimientos);
+          ArrMovimientos = OrdenarCuentas(ArrMovimientos);
+          //log.debug('Ordenar cuentas', ArrMovimientos);
+          ArrMovimientos = AgruparCuentas(ArrMovimientos);
+          log.debug('Agrupar cuentas', ArrMovimientos); //agrupa por cuatro digitos
+        }
+      }
+      //juntar arreglos de movimiento y saldo anterior
+      Pucs = obtenerDescripPUC();
+      var arrTotal = juntarSaldoYMoviemiento(SaldoAnteriorPUC, ArrMovimientos);
+      var dataTotal = SaldoAnterior.concat(arrTotal);
+      log.debug('dataTotal', dataTotal);
+      if (paramPUC == '9') {
+        ObtenerDatosSubsidiaria();
+        log.debug('procesamiento de excel');
+        //ordenar data por PUC de 2 y 1 digito
+        var arr2digits = agruparNivel2(dataTotal);
+        log.debug('arr2digits', arr2digits);
+        var arr1digits = agruparNivel1(arr2digits);
+        log.debug('arr1digits', arr1digits);
+        //Generar excel final del reporte
+        GenerarExcel(dataTotal, arr2digits, arr1digits);
+      } else {
+        //actualizar archivo temporal
+        if (dataTotal.length != 0) {
+          var nameFile = 'INVENTARIO_BALANCE_TEMPORAL';
+          saveFile(formatear(dataTotal), nameFile, 'txt');
         } else {
-          var dataTotal = SaldoAnterior.concat(arrTotal);
-          //actualizar archivo temporal
-          if (dataTotal.length != 0) {
-            var nameFile = 'INVENTARIO_BALANCE_TEMPORAL';
-            saveFile(formatear(dataTotal), nameFile, 'txt');
-          }else{
-            log.debug('No hay data ni de saldos ni de movimientos.','No se actualiza archivo.')
-          }
-          //llamar de nuevo a map reduce con el siguiente numero PUC
-          paramPUC++;
-          //if (paramPUC != 3) {
-            llamarMapReduce();
-          //}
+          log.debug('No hay data ni de saldos ni de movimientos.', 'No se actualiza archivo.')
         }
+        //llamar de nuevo a map reduce con el siguiente numero PUC
+        paramPUC++;
+        //if (paramPUC != 3) {
+        llamarMapReduce();
+        //}
+      }
 
       /*} catch (err) {
         libreria.sendMail(LMRY_script, ' [ execute ] ' + err);
@@ -151,7 +156,173 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
     }
 
-    function llamarMapReduce(){
+    function agruparNivel2(arrData) {
+      var resultTot = new Array();
+      var importe = 0;
+      for (var i = 0; i < arrData.length; i++) {
+        if (i == 0) {
+          importe = Number(arrData[i][3]);
+        } else if (i != arrData.length - 1) {
+          if (arrData[i][0].substring(0, 2) == arrData[i - 1][0].substring(0, 2)) {
+            importe += Number(arrData[i][3]);
+          } else {
+            var result = new Array();
+            result.push(arrData[i - 1][0].substring(0, 2)); //puc
+            result.push(arrData[i - 1][5]); //DESCRIPCION
+            result.push(importe); //importe
+            result.push(arrData[i - 1][6]); //decripcion puc 1d
+            resultTot.push(result);
+            importe = Number(arrData[i][3]);
+          }
+        } else {
+          if (arrData[i][0].substring(0, 2) == arrData[i - 1][0].substring(0, 2)) {
+            importe += Number(arrData[i][3]);
+          } else {
+            var result = new Array();
+            result.push(arrData[i - 1][0].substring(0, 2)); //puc
+            result.push(arrData[i - 1][5]); //DESCRIPCION
+            result.push(importe); //importe
+            result.push(arrData[i - 1][6]); //decripcion puc 1d
+            resultTot.push(result);
+            importe = Number(arrData[i][3]);
+          }
+          var result = new Array();
+          result.push(arrData[i][0].substring(0, 2)); //puc
+          result.push(arrData[i][5]); //DESCRIPCION
+          result.push(importe); //importe
+          result.push(arrData[i][6]); //decripcion puc 1d
+          resultTot.push(result);
+        }
+      }
+      return resultTot;
+    }
+
+    function agruparNivel1(arrData) {
+      var resultTot = new Array();
+      var importe = 0;
+      for (var i = 0; i < arrData.length; i++) {
+        if (i == 0) {
+          importe = Number(arrData[i][2]);
+        } else if (i != arrData.length - 1) {
+          if (arrData[i][0].substring(0, 1) == arrData[i - 1][0].substring(0, 1)) {
+            importe += Number(arrData[i][2]);
+          } else {
+            var result = new Array();
+            result.push(arrData[i - 1][0].substring(0, 1)); //puc
+            result.push(arrData[i - 1][3]); //DESCRIPCION
+            result.push(importe); //importe
+            resultTot.push(result);
+            importe = Number(arrData[i][2]);
+          }
+        } else {
+          if (arrData[i][0].substring(0, 1) == arrData[i - 1][0].substring(0, 1)) {
+            importe += Number(arrData[i][2]);
+          } else {
+            var result = new Array();
+            result.push(arrData[i - 1][0].substring(0, 1)); //puc
+            result.push(arrData[i - 1][3]); //DESCRIPCION
+            result.push(importe); //importe
+            resultTot.push(result);
+            importe = Number(arrData[i][2]);
+          }
+          var result = new Array();
+          result.push(arrData[i][0].substring(0, 1)); //puc
+          result.push(arrData[i][3]); //DESCRIPCION
+          result.push(importe); //importe
+          resultTot.push(result);
+        }
+      }
+      return resultTot;
+    }
+
+    function obtenerDescripPUC() {
+      var intDMinReg = 0;
+      var intDMaxReg = 1000;
+      var DbolStop = false;
+      var ArrReturn = new Array();
+
+      var busqueda = search.create({
+        type: "customrecord_lmry_co_puc",
+        filters: [
+          ["formulatext: LENGTH({name})", "is", "4"],
+          "AND",
+          ["isinactive", "is", "F"],
+          "AND",
+          ["formulatext: {custrecord_lmry_co_puc_subacc_of_digit1.name}", "is", paramPUC]
+        ],
+        columns: [
+          search.createColumn({
+            name: "name",
+            sort: search.Sort.ASC,
+            label: "0. PUC 4D"
+          }),
+          search.createColumn({
+            name: "custrecord_lmry_co_puc",
+            label: "1. DESCRIP. PUC 4D"
+          }),
+          search.createColumn({
+            name: "formulatext",
+            formula: "{custrecord_lmry_co_puc_subacc_of_digit2.custrecord_lmry_co_puc}",
+            label: "2. DESCRIP PUC 2D"
+          }),
+          search.createColumn({
+            name: "formulatext",
+            formula: "{custrecord_lmry_co_puc_subacc_of_digit1.custrecord_lmry_co_puc}",
+            label: "3. DESCRIP PUC 1D"
+          })
+        ]
+      });
+
+      var savedsearch = busqueda.run();
+
+      while (!DbolStop) {
+        var objResult = savedsearch.getRange(intDMinReg, intDMaxReg);
+
+        if (objResult != null) {
+          if (objResult.length != 1000) {
+            DbolStop = true;
+          }
+
+          for (var i = 0; i < objResult.length; i++) {
+            var columns = objResult[i].columns;
+            var arrAuxiliar = new Array();
+            //0. PUC 4D
+            if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '')
+              arrAuxiliar[0] = objResult[i].getValue(columns[0]);
+            else
+              arrAuxiliar[0] = '';
+            //1. DESCRIPCION PUC 4D
+            if (objResult[i].getValue(columns[1]) != null && objResult[i].getValue(columns[1]) != '')
+              arrAuxiliar[1] = objResult[i].getValue(columns[1]);
+            else
+              arrAuxiliar[1] = '';
+            //1. DESCRIPCION PUC 2D
+            if (objResult[i].getValue(columns[2]) != null && objResult[i].getValue(columns[2]) != '')
+              arrAuxiliar[2] = objResult[i].getValue(columns[2]);
+            else
+              arrAuxiliar[2] = '';
+            //1. DESCRIPCION PUC 1D
+            if (objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '')
+              arrAuxiliar[3] = objResult[i].getValue(columns[3]);
+            else
+              arrAuxiliar[3] = '';
+
+            ArrReturn.push(arrAuxiliar);
+          }
+
+          if (!DbolStop) {
+            intDMinReg = intDMaxReg;
+            intDMaxReg += 1000;
+          }
+        } else {
+          DbolStop = true;
+        }
+      }
+
+      return ArrReturn;
+    }
+
+    function llamarMapReduce() {
       var params = {};
       params['custscript_test_invbal_logid'] = paramLogId;
       params['custscript_test_invbal_periodo'] = paramPeriodo;
@@ -174,7 +345,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       RedirecSchdl.submit();
     }
 
-    function formatear(data){
+    function formatear(data) {
       var strTotal = '';
       for (var i = 0; i < data.length; i++) {
         strTotal += data[i].join('|') + '\r\n';
@@ -186,6 +357,11 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       var arrTotal = arrDataSaldo;
 
       for (var i = 0; i < arrTotal.length; i++) {
+        var json = matchPUC(arrTotal[i][0]);
+        arrTotal[i].push(json.puc4);
+        arrTotal[i].push(json.puc2);
+        arrTotal[i].push(json.puc1);
+
         var cant = arrDataMovimiento.length;
         var j = 0;
         while (j < cant) {
@@ -199,14 +375,18 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           }
         }
       }
-      log.debug('arrTotal',arrTotal);
-      log.debug('arrDataMovimiento',arrDataMovimiento);
+      log.debug('arrTotal', arrTotal);
+      log.debug('arrDataMovimiento', arrDataMovimiento);
       for (var i = 0; i < arrDataMovimiento.length; i++) {
         var arrMovimientosN = new Array();
         arrMovimientosN.push(arrDataMovimiento[i][0]);
         arrMovimientosN.push('');
         arrMovimientosN.push('');
         arrMovimientosN.push(Number(arrDataMovimiento[i][7]));
+        var json = matchPUC(arrDataMovimiento[i][0]);
+        arrMovimientosN.push(json.puc4);
+        arrMovimientosN.push(json.puc2);
+        arrMovimientosN.push(json.puc1);
         arrTotal.push(arrMovimientosN);
       }
       /*ArrMovimientos.map( e => {
@@ -218,6 +398,28 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       arrTotal = arrTotal.concat(ArrMovimientos);*/
       arrTotal = OrdenarCuentas(arrTotal);
       return arrTotal;
+    }
+
+    function matchPUC(puc) {
+      var i = 0;
+      var cant = Pucs.length;
+      var jsonData = {
+        puc1: '',
+        puc2: '',
+        puc4: '',
+      };
+      while (i < cant) {
+        if (Pucs[i][0] == puc) {
+          jsonData.puc4 = Pucs[i][1];
+          jsonData.puc2 = Pucs[i][2];
+          jsonData.puc1 = Pucs[i][3];
+          Pucs.splice(i, 1);
+          break;
+        } else {
+          i++;
+        }
+      }
+      return jsonData;
     }
 
     function obtenerDataAnterior() {
@@ -392,118 +594,128 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       return ArrReturn;
     }
 
-    function GenerarExcel(arrCuatroDigitos) {
+    function GenerarExcel(arr4D, arr2D, arr1D) {
       //Obtengo el total de Lineas a imprimir
-      var nLinea = 3000;
-      var xlsLineas = arrCuatroDigitos.length;
-      var NroLineas = xlsLineas / nLinea;
+      //var nLinea = 3000;
+      xlsString = '<?xml version="1.0" encoding="UTF-8" ?><?mso-application progid="Excel.Sheet"?>';
+      xlsString += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ';
+      xlsString += 'xmlns:o="urn:schemas-microsoft-com:office:office" ';
+      xlsString += 'xmlns:x="urn:schemas-microsoft-com:office:excel" ';
+      xlsString += 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" ';
+      xlsString += 'xmlns:html="http://www.w3.org/TR/REC-html40">';
+      xlsString += '<Styles>';
+      xlsString += '<Style ss:ID="s21"><Font ss:Bold="1" ss:Size="12" /><Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/></Style>';
+      xlsString += '<Style ss:ID="s22"><Font ss:Bold="1"/><Alignment ss:Vertical="Bottom"/></Style>';
+      xlsString += '<Style ss:ID="s23"><Font ss:Bold="1"/><Alignment ss:Vertical="Bottom"/><NumberFormat ss:Format="_(* #,###.00_);_(* \(#,###.00\);_(* &quot;-&quot;??_);_(@_)"/></Style>';
+      xlsString += '<Style ss:ID="s24"><NumberFormat ss:Format="_(* #,###.00_);_(* \(#,##0.00\);_(* &quot;-&quot;??_);_(@_)"/></Style>';
+      xlsString += '</Styles><Worksheet ss:Name="Sheet1">';
 
-      if ((xlsLineas % nLinea) > 0) {
-        NroLineas = NroLineas + 1;
+      xlsString += '<Table>';
+      xlsString += '<Column ss:AutoFitWidth="0" ss:Width="100"/>';
+      xlsString += '<Column ss:AutoFitWidth="0" ss:Width="150"/>';
+      xlsString += '<Column ss:AutoFitWidth="0" ss:Width="100"/>';
+      xlsString += '<Column ss:AutoFitWidth="0" ss:Width="100"/>';
+
+      //Cabecera
+      xlsString += '<Row>';
+      xlsString += '<Cell></Cell>';
+      xlsString += '<Cell ss:StyleID="s21"><Data ss:Type="String"> LIBRO DE INVENTARIO Y BALANCE </Data></Cell>';
+      xlsString += '</Row>';
+      xlsString += '<Row></Row>';
+      xlsString += '<Row>';
+      xlsString += '<Cell></Cell>';
+      // nlapiLogExecution('ERROR', 'paramPeriodo-> ', paramPeriodo);
+
+      xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">Razon Social: ' + companyname + '</Data></Cell>';
+      xlsString += '</Row>';
+      xlsString += '<Row>';
+      xlsString += '<Cell></Cell>';
+      xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">NIT: ' + companyruc + '</Data></Cell>';
+      xlsString += '</Row>';
+      xlsString += '<Row>';
+      xlsString += '<Cell></Cell>';
+      xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">Corte al: ' + Fecha_Corte_al + '</Data></Cell>';
+      xlsString += '</Row>';
+      if ((featMulti || featMulti == 'T') && (paramMulti != '' && paramMulti != null)) {
+        xlsString += '<Row>';
+        xlsString += '<Cell></Cell>';
+        xlsString += '<Cell ss:StyleID="s22"><Data ss:Type="String">Multibooking: ' + multibookName + '</Data></Cell>';
+        xlsString += '</Row>';
       }
-      if (arrCuatroDigitos.length != null && arrCuatroDigitos.length != 0) {
+      xlsString += '<Row></Row>';
+      xlsString += '<Row></Row>';
+      xlsString += '<Row>' +
+        '<Cell ss:StyleID="s21"><Data ss:Type="String"> Cuenta </Data></Cell>' +
+        '<Cell ss:StyleID="s21"><Data ss:Type="String"> Denominacion </Data></Cell>' +
+        '<Cell ss:StyleID="s21"><Data ss:Type="String"> Importe </Data></Cell>' +
+        '</Row>';
 
-        for (ip = 1; ip <= NroLineas; ip++) {
-          xlsString = '<?xml version="1.0" encoding="UTF-8" ?><?mso-application progid="Excel.Sheet"?>';
-          xlsString += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ';
-          xlsString += 'xmlns:o="urn:schemas-microsoft-com:office:office" ';
-          xlsString += 'xmlns:x="urn:schemas-microsoft-com:office:excel" ';
-          xlsString += 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" ';
-          xlsString += 'xmlns:html="http://www.w3.org/TR/REC-html40">';
-          xlsString += '<Styles>';
-          xlsString += '<Style ss:ID="s21"><Font ss:Bold="1" ss:Size="12" /><Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/></Style>';
-          xlsString += '<Style ss:ID="s22"><Font ss:Bold="1"/><Alignment ss:Vertical="Bottom"/></Style>';
-          xlsString += '<Style ss:ID="s23"><Font ss:Bold="1"/><Alignment ss:Vertical="Bottom"/><NumberFormat ss:Format="_(* #,###.00_);_(* \(#,###.00\);_(* &quot;-&quot;??_);_(@_)"/></Style>';
-          xlsString += '<Style ss:ID="s24"><NumberFormat ss:Format="_(* #,###.00_);_(* \(#,##0.00\);_(* &quot;-&quot;??_);_(@_)"/></Style>';
-          xlsString += '</Styles><Worksheet ss:Name="Sheet1">';
+      var j = 0;
+      var k = 0;
+      for (var i = 0; i < arr1D.length; i++) {
+        xlsString += '<Row>';
+        xlsString += '<Cell ss:StyleID="s22"><Data ss:Type="String">' + arr1D[i][0] + '</Data></Cell>';
+        xlsString += '<Cell ss:StyleID="s22"><Data ss:Type="String">' + arr1D[i][1] + '</Data></Cell>';
+        xlsString += '<Cell ss:StyleID="s23"><Data ss:Type="Number">' + arr1D[i][2] + '</Data></Cell>';
+        xlsString += '</Row>';
 
-          xlsString += '<Table>';
-          xlsString += '<Column ss:AutoFitWidth="0" ss:Width="100"/>';
-          xlsString += '<Column ss:AutoFitWidth="0" ss:Width="150"/>';
-          xlsString += '<Column ss:AutoFitWidth="0" ss:Width="100"/>';
-          xlsString += '<Column ss:AutoFitWidth="0" ss:Width="100"/>';
-
-          //Cabecera
-          xlsString += '<Row>';
-          xlsString += '<Cell></Cell>';
-          xlsString += '<Cell ss:StyleID="s21"><Data ss:Type="String"> LIBRO DE INVENTARIO Y BALANCE </Data></Cell>';
-          xlsString += '</Row>';
-          xlsString += '<Row></Row>';
-          xlsString += '<Row>';
-          xlsString += '<Cell></Cell>';
-          // nlapiLogExecution('ERROR', 'paramPeriodo-> ', paramPeriodo);
-
-          xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">Razon Social: ' + companyname + '</Data></Cell>';
-          xlsString += '</Row>';
-          xlsString += '<Row>';
-          xlsString += '<Cell></Cell>';
-          xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">NIT: ' + companyruc + '</Data></Cell>';
-          xlsString += '</Row>';
-          xlsString += '<Row>';
-          xlsString += '<Cell></Cell>';
-          xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">Corte al: ' + Fecha_Corte_al + '</Data></Cell>';
-          xlsString += '</Row>';
-          if ((featMulti || featMulti == 'T') && (paramMulti != '' && paramMulti != null)) {
+        while (j < arr2D.length) {
+          if (arr2D[j][0].substring(0, 1) == arr1D[i][0]) {
             xlsString += '<Row>';
-            xlsString += '<Cell></Cell>';
-            xlsString += '<Cell ss:StyleID="s22"><Data ss:Type="String">Multibooking: ' + multibookName + '</Data></Cell>';
+            xlsString += '<Cell ss:StyleID="s22"><Data ss:Type="String">' + arr2D[j][0] + '</Data></Cell>';
+            xlsString += '<Cell ss:StyleID="s22"><Data ss:Type="String">' + arr2D[j][1] + '</Data></Cell>';
+            xlsString += '<Cell ss:StyleID="s23"><Data ss:Type="Number">' + arr2D[j][2] + '</Data></Cell>';
             xlsString += '</Row>';
-          }
-          xlsString += '<Row></Row>';
-          xlsString += '<Row></Row>';
-          xlsString += '<Row>' +
-            '<Cell ss:StyleID="s21"><Data ss:Type="String"> Cuenta </Data></Cell>' +
-            '<Cell ss:StyleID="s21"><Data ss:Type="String"> Denominacion </Data></Cell>' +
-            '<Cell ss:StyleID="s21"><Data ss:Type="String"> Importe </Data></Cell>' +
-            '</Row>';
 
-          for (var i = 0; i < arrCuatroDigitos.length; i++) {
-            if (arrCuatroDigitos[i][0].length == 4 && Number((arrCuatroDigitos[i][0]).charAt(0)) <= 10) {
-              xlsString += '<Row>';
-              xlsString += '<Cell><Data ss:Type="String">' + arrCuatroDigitos[i][0] + '</Data></Cell>';
-              xlsString += '<Cell><Data ss:Type="String">' + arrCuatroDigitos[i][1] + '</Data></Cell>';
-              xlsString += '<Cell ss:StyleID="s24"><Data ss:Type="Number">' + arrCuatroDigitos[i][7] + '</Data></Cell>';
-              // nlapiLogExecution('ERROR', 'arrCuatroDigitos_1', arrCuatroDigitos[i][0].length);
-              xlsString += '</Row>';
-            } else {
-              if (Number((arrCuatroDigitos[i][0]).charAt(0)) <= 10) {
+            while (k < arr4D.length) {
+              if (arr4D[k][0].substring(0, 2) == arr2D[j][0]) {
                 xlsString += '<Row>';
-                xlsString += '<Cell ss:StyleID="s22"><Data ss:Type="String">' + arrCuatroDigitos[i][0] + '</Data></Cell>';
-                xlsString += '<Cell ss:StyleID="s22"><Data ss:Type="String">' + arrCuatroDigitos[i][1] + '</Data></Cell>';
-                /*if (arrCuatroDigitos[i][0].length == 1){
-                    xlsString += '<Cell><Data ss:Type="String"></Data></Cell>';
-                }*/
-                xlsString += '<Cell ss:StyleID="s23"><Data ss:Type="Number">' + arrCuatroDigitos[i][7] + '</Data></Cell>';
-                // nlapiLogExecution('ERROR', 'arrCuatroDigitos_2', arrCuatroDigitos[i][0].length);
+                xlsString += '<Cell><Data ss:Type="String">' + arr4D[k][0] + '</Data></Cell>';
+                xlsString += '<Cell><Data ss:Type="String">' + arr4D[k][4] + '</Data></Cell>';
+                xlsString += '<Cell ss:StyleID="s24"><Data ss:Type="Number">' + arr4D[k][3] + '</Data></Cell>';
                 xlsString += '</Row>';
+                k++;
+              } else {
+                break;
               }
+
             }
+            j++;
+          } else {
+            break;
           }
 
-          // CAMBIO 2016/04/14 - FILA DIFERENCIA
-          // Operacion con las Cuentas de 1 Digito (ACTIVOS + GASTOS - INGRESOS - PASIVO - PATRIMONIO)
-          xlsString += '<Row>';
-          //xlsString += '<Cell></Cell>';
-          xlsString += '<Cell></Cell>';
-          xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">DIFERENCIA</Data></Cell>';
-          xlsString += '<Cell ss:StyleID="s23"><Data ss:Type="Number">' + (montoTotal1Dig - montoTotal2Dig) + '</Data></Cell>';
-          xlsString += '</Row>';
-          xlsString += '</Table></Worksheet></Workbook>';
-
-          // Se arma el archivo EXCEL
-          Final_string = encode.convert({
-            string: xlsString,
-            inputEncoding: encode.Encoding.UTF_8,
-            outputEncoding: encode.Encoding.BASE_64
-          });
-
-          saveFile();
         }
-      } else {
-        RecordNoData();
-
       }
 
+      // CAMBIO 2016/04/14 - FILA DIFERENCIA
+      // Operacion con las Cuentas de 1 Digito (ACTIVOS + GASTOS - INGRESOS - PASIVO - PATRIMONIO)
+      var montoTotal1Dig = arr1D.reduce(function(contador, e) {
+        return contador + e[2];
+      }, 0)
+      log.debug('montoTotal1Dig',montoTotal1Dig);
+      var montoTotal2Dig = arr2D.reduce(function(contador, e) {
+        return contador + e[2];
+      }, 0)
+      log.debug('montoTotal2Dig',montoTotal2Dig);
+
+      xlsString += '<Row>';
+      //xlsString += '<Cell></Cell>';
+      xlsString += '<Cell></Cell>';
+      xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">DIFERENCIA</Data></Cell>';
+      xlsString += '<Cell ss:StyleID="s23"><Data ss:Type="Number">' +(montoTotal1Dig - montoTotal2Dig)+ '</Data></Cell>';
+      xlsString += '</Row>';
+      xlsString += '</Table></Worksheet></Workbook>';
+
+      // Se arma el archivo EXCEL
+      Final_string = encode.convert({
+        string: xlsString,
+        inputEncoding: encode.Encoding.UTF_8,
+        outputEncoding: encode.Encoding.BASE_64
+      });
+
+      var nameFile = Name_File();
+      saveFile(Final_string, nameFile, 'xls');
     }
 
     function ValidatePrimaryBook() {
@@ -693,13 +905,33 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         savedsearch.filters.push(subsidiaryFilter);
       }
 
-      var periodFilter = search.createFilter({
-        name: 'postingperiod',
-        join: 'transaction',
-        operator: search.Operator.ANYOF,
-        values: PeriodosRestantes
+      var periodFieldFROM = search.lookupFields({
+        type: search.Type.ACCOUNTING_PERIOD,
+        id: PeriodosRestantes[0],
+        columns: ['startdate']
       });
-      savedsearch.filters.push(periodFilter);
+
+      var periodFieldTO = search.lookupFields({
+        type: search.Type.ACCOUNTING_PERIOD,
+        id: PeriodosRestantes[1],
+        columns: ['enddate']
+      });
+
+      var periodFilterFROM = search.createFilter({
+        name: 'trandate',
+        join: 'transaction',
+        operator: search.Operator.ONORAFTER,
+        values: [periodFieldFROM.startdate]
+      });
+      savedsearch.filters.push(periodFilterFROM);
+
+      var periodFilterTO = search.createFilter({
+        name: 'trandate',
+        join: 'transaction',
+        operator: search.Operator.ONORBEFORE,
+        values: [periodFieldTO.enddate]
+      });
+      savedsearch.filters.push(periodFilterTO);
 
       var multibookFilter = search.createFilter({
         name: 'accountingbook',
@@ -785,12 +1017,31 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         savedsearch.filters.push(subsidiaryFilter);
       }
 
-      var periodFilter = search.createFilter({
-        name: 'postingperiod',
-        operator: search.Operator.ANYOF,
-        values: PeriodosRestantes
+      var periodFieldFROM = search.lookupFields({
+        type: search.Type.ACCOUNTING_PERIOD,
+        id: PeriodosRestantes[0],
+        columns: ['startdate']
       });
-      savedsearch.filters.push(periodFilter);
+
+      var periodFieldTO = search.lookupFields({
+        type: search.Type.ACCOUNTING_PERIOD,
+        id: PeriodosRestantes[1],
+        columns: ['enddate']
+      });
+
+      var periodFilterFROM = search.createFilter({
+        name: 'trandate',
+        operator: search.Operator.ONORAFTER,
+        values: [periodFieldFROM.startdate]
+      });
+      savedsearch.filters.push(periodFilterFROM);
+
+      var periodFilterTO = search.createFilter({
+        name: 'trandate',
+        operator: search.Operator.ONORBEFORE,
+        values: [periodFieldTO.enddate]
+      });
+      savedsearch.filters.push(periodFilterTO);
 
       if (featMulti) {
         var multibookFilter = search.createFilter({
@@ -1037,7 +1288,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
 
     function Name_File() {
-
       var _NameFile = '';
 
       var fecha_format = format.parse({
@@ -1048,16 +1298,12 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       var MM = fecha_format.getMonth() + 1;
       var YYYY = fecha_format.getFullYear();
       // var DD = fecha_format.getDate();
-
       if (('' + MM).length == 1) {
         MM = '0' + MM;
       }
-
       //var  MesConvertido = Periodo(MM);
-      _NameFile = "COLibroInventarioBalance" + '_' + ip + '_' + companyname + '_' + MM + '_' + YYYY;
-
+      _NameFile = "COLibroInventarioBalance" + '_' + 1 + '_' + companyname + '_' + MM + '_' + YYYY;
       return _NameFile;
-
     }
 
     //-------------------------------------------------------------------------------------------------------
@@ -1089,7 +1335,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         }
         // Termina de grabar el archivo
         var idfile = file.save();
-        log.debug('Se actualizo archivo temporal con id: ',idfile);
+        log.debug('Se actualizo archivo temporal con id: ', idfile);
         // Trae URL de archivo generado
         if (extension == 'xls') {
           var idfile2 = fileModulo.load({
@@ -1124,7 +1370,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
             //Nombre de Archivo
             record.setValue({
               fieldId: 'custrecord_lmry_co_rg_name',
-              value: NameFile
+              value: nameFile + '.' + extension
             });
             //Periodo
             record.setValue({
@@ -1161,7 +1407,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
             var recordId = record.save();
             // Envia mail de conformidad al usuario
-            libreria.sendrptuser('CO - Libro de Inventario y Balance 2.0', 3, NameFile);
+            libreria.sendrptuser('CO - Libro de Inventario y Balance 2.0', 3, nameFile);
           }
         }
 
