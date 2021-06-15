@@ -112,7 +112,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           if (arr1digits.length != 0) {
             GenerarExcel(dataTotal, arr2digits, arr1digits);
           } else {
-            RecordNoData();
+            /*RecordNoData();*/
           }
         } else {
           //actualizar archivo temporal
@@ -1307,7 +1307,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         var idfile = file.save();
         log.debug('Se actualizo archivo temporal con id: ', idfile);
         // Trae URL de archivo generado
-        if (extension == 'xls') {
+        /*if (extension == 'xls') {
           var idfile2 = fileModulo.load({
             id: idfile
           });
@@ -1380,7 +1380,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
             libreria.sendrptuser('CO - Libro de Inventario y Balance 2.0', 3, nameFile);
           }
         }
-
+        */
       } else {
         // Debug
         log.error({

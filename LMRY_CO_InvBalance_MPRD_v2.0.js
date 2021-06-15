@@ -26,18 +26,10 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var objContext = runtime.getCurrentScript();
     var LMRY_script = "LMRY_CO_InvBalance_MPRD_v2.0.js";
 
-    var paramMultibook = objContext.getParameter({
-      name: 'custscript_test_invbal_multibook'
-    });
-    var paramRecordID = objContext.getParameter({
-      name: 'custscript_test_invbal_logid'
-    });
-    var paramSubsidy = objContext.getParameter({
-      name: 'custscript_test_invbal_subsi'
-    });
-    var paramPeriod = objContext.getParameter({
-      name: 'custscript_test_invbal_periodo'
-    });
+    var paramMultibook = 1;
+    var paramRecordID = "";
+    var paramSubsidy = 3;
+    var paramPeriod = 365;
     var paramPUC = objContext.getParameter({
       name: 'custscript_test_invbal_lastpuc'
     });
@@ -267,7 +259,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var ArrReturn = new Array();
 
       var savedsearch = search.load({
-        /*LatamReady - CO Inventory and Balance Test*/
+        /*LatamTest - CO Inventory and Balance Third Data*/
         id: 'customsearch_test_co_inv_bal'
       });
 
