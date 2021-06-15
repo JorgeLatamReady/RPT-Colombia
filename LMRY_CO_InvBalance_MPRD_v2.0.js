@@ -73,8 +73,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
     function getInputData() {
       try {
-        log.debug('getInputData', 'getInputData');
-        log.debug('parametros:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC + ' FILE ID -' + paramFileID);
+        log.debug('getInputData:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC + ' FILE ID -' + paramFileID);
         ParametrosYFeatures();
         // Obtiene años ya procesados
         var ArrProcessedYears = ObtenerAñosProcesados();
@@ -191,7 +190,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         // Obtiene los periodos Fiscal Year (desde el inicio hasta un año antes del periodo de generación)
         ArrYears = ObtenerAñosFiscales();
         OrdenarAños(ArrYears);
-        log.debug('ArrYears en summarize', ArrYears);
+        //log.debug('ArrYears en summarize', ArrYears);
         var arrSaldoAnterior = obtenerSaldoAnterior(ArrYears[ArrYears.length - 1][1]); //saldos del inicio de los tiempos hasta un año antes al periodo de generación.
         log.debug('arrSaldoAnterior',arrSaldoAnterior);
 
@@ -203,18 +202,18 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           });
           var lineas = file.getContents();
           var idfile = savefile(lineas + ConvertirAString(arrSaldoAnterior));
-          log.debug('idfile',idfile);
+          //log.debug('idfile',idfile);
         }
         // Obtener todos los periodos
         var ArrAllPeriods = ObtenerPeriodos();
-        // Obtener periodos del año
+        // Obtener periodos que faltarian procesar del mismo año de generación
         var ArrYearPeriods = ObtenerPeriodosDelAño(ArrAllPeriods);
         log.debug('Periodos faltantes a procesar, para puc '+paramPUC+':',ArrYearPeriods);
         if (ArrYearPeriods.length != 0) {
           ArrYearPeriods = ArrYearPeriods.map(function rem(e) {return e[0]});
           log.debug('ArrYearPeriods total',ArrYearPeriods);
           ArrYearPeriods = ArrYearPeriods[0] + ',' + ArrYearPeriods[ArrYearPeriods.length - 1];
-          log.debug('ArrYearPeriods total',ArrYearPeriods);
+          //log.debug('ArrYearPeriods total',ArrYearPeriods);
         }else{
           ArrYearPeriods = '';
         }

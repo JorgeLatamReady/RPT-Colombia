@@ -17,8 +17,8 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
   function(recordModulo, runtime, fileModulo, email, encode, search, format, log,
     config, sftp, libreria, task, render) {
-    var objContext = runtime.getCurrentScript();
 
+    var objContext = runtime.getCurrentScript();
     //Tamaño
     var file_size = 7340032;
     // Nombre del Reporte
@@ -36,13 +36,11 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
     //Control de Reporte
     var periodstartdate = '';
     var periodenddate = '';
-    var antperiodenddate = '';
     var companyruc = '';
     var companyname = '';
 
     var xlsString = '';
 
-    var ArrMovimientosSpecific = new Array();
     var ArrMovimientos = new Array();
     var SaldoAnteriorPUC = new Array();
     var arrAccountingContext = new Array();
@@ -55,104 +53,84 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
     var periodname = '';
     var auxmess = '';
     var auxanio = '';
-
     var Final_string;
-    var ip;
-
     var multibookName = '';
-
     var language;
     var Fecha_Corte_al;
     var PeriodosRestantes = new Array();
     var Pucs = new Array();
-
-    /* ***********************************************
-     * Arreglo con la structura de la tabla log
-     * ******************************************** */
-    var RecordName = 'customrecord_lmry_co_rpt_generator_log';
-    var RecordTable = ['custrecord_lmry_co_rg_name',
-      'custrecord_lmry_co_rg_postingperiod',
-      'custrecord_lmry_co_rg_subsidiary',
-      'custrecord_lmry_co_rg_url_file',
-      'custrecord_lmry_co_rg_employee',
-      'custrecord_lmry_co_rg_multibook'
-    ];
-
     //Features
     var featSubsi = null;
     var featMulti = null;
 
     function execute(context) {
-      //try {
-      ObtenerParametrosYFeatures();
-      PeriodosRestantes = paramPeriodsRestantes.split(',');
-      //PeriodosRestantes = PeriodosRestantes.map(function e(p) {return Number(p)});
-      //obtener saldo anterior
-      obtenerDataAnterior(); //del archivo temporal, solo lineas con el puc actual
-      log.debug('SaldoAnteriorPUC', SaldoAnteriorPUC);
-      //obtener Movimientos
-      if (PeriodosRestantes.length != 0) {
+      try {
+        ObtenerParametrosYFeatures();
+        PeriodosRestantes = paramPeriodsRestantes.split(',');
+        //PeriodosRestantes = PeriodosRestantes.map(function e(p) {return Number(p)});
+        //obtener saldo anterior
+        obtenerDataAnterior(); //obtiene data de archivo temporal, seteando en 2 variables SaldoAnteriorPUC, SaldoAnterior
+        //obtener Movimientos
+        if (PeriodosRestantes.length != 0) {
 
-        ArrMovimientos = ObtieneTransacciones();
-        log.debug('ArrMovimientos', ArrMovimientos);
-        if (featMulti) {
-          ArrAccounts = ObtenerCuentas();
-          ArrMovimientos = SetPUCMultibook(ArrMovimientos); //usa ArrAccounts
-          log.debug('ArrMovimientos SetPUCMultibook', ArrMovimientos);
-        }
+          ArrMovimientos = ObtieneTransacciones();
+          log.debug('ArrMovimientos', ArrMovimientos);
+          if (featMulti) {
+            ArrAccounts = ObtenerCuentas();
+            ArrMovimientos = SetPUCMultibook(ArrMovimientos); //usa ArrAccounts
+            log.debug('ArrMovimientos SetPUCMultibook', ArrMovimientos);
+          }
 
-        if (featMulti) {
-          ArrMovimientosSpecific = ObtieneSpecificTransaction();
-          ArrMovimientos = ArrMovimientos.concat(ArrMovimientosSpecific);
+          if (featMulti) {
+            var ArrMovimientosSpecific = ObtieneSpecificTransaction();
+            ArrMovimientos = ArrMovimientos.concat(ArrMovimientosSpecific);
 
-          if (!ValidatePrimaryBook() || ValidatePrimaryBook() != 'T') {
-            var array_context = ObtieneAccountingContext();
-            CambioDeCuentas(ArrMovimientos); //usa arrAccountingContext
+            if (!ValidatePrimaryBook() || ValidatePrimaryBook() != 'T') {
+              var array_context = ObtieneAccountingContext();
+              CambioDeCuentas(ArrMovimientos); //usa arrAccountingContext
+            }
+          }
+
+          if (ArrMovimientos.length > 1) {
+            ArrMovimientos = OrdenarCuentas(ArrMovimientos);
+            ArrMovimientos = AgruparCuentas(ArrMovimientos);
+            log.debug('Data Movimientos en Año de generación agrupada 4D', ArrMovimientos); //hasta el periodo de generación incluido
           }
         }
-
-        if (ArrMovimientos.length > 1) {
-          //log.debug('Antes Ordenar cuentas', ArrMovimientos);
-          ArrMovimientos = OrdenarCuentas(ArrMovimientos);
-          //log.debug('Ordenar cuentas', ArrMovimientos);
-          ArrMovimientos = AgruparCuentas(ArrMovimientos);
-          log.debug('Agrupar cuentas', ArrMovimientos); //agrupa por cuatro digitos
-        }
-      }
-      //juntar arreglos de movimiento y saldo anterior
-      Pucs = obtenerDescripPUC();
-      var arrTotal = juntarSaldoYMoviemiento(SaldoAnteriorPUC, ArrMovimientos);
-      var dataTotal = SaldoAnterior.concat(arrTotal);
-      log.debug('dataTotal', dataTotal);
-      if (paramPUC == '9') {
-        ObtenerDatosSubsidiaria();
-        log.debug('procesamiento de excel');
-        //ordenar data por PUC de 2 y 1 digito
-        var arr2digits = agruparNivel2(dataTotal);
-        log.debug('arr2digits', arr2digits);
-        var arr1digits = agruparNivel1(arr2digits);
-        log.debug('arr1digits', arr1digits);
-        //Generar excel final del reporte
-        GenerarExcel(dataTotal, arr2digits, arr1digits);
-      } else {
-        //actualizar archivo temporal
-        if (dataTotal.length != 0) {
-          var nameFile = 'INVENTARIO_BALANCE_TEMPORAL';
-          saveFile(formatear(dataTotal), nameFile, 'txt');
+        //juntar arreglos de movimiento y saldo anterior
+        Pucs = obtenerDescripPUC();
+        var arrTotal = juntarSaldoYMovimiento(SaldoAnteriorPUC, ArrMovimientos);
+        var dataTotal = SaldoAnterior.concat(arrTotal);
+        log.debug('dataTotal', dataTotal);
+        if (paramPUC == '9') {
+          ObtenerDatosSubsidiaria();
+          var arr2digits = agruparNivel2(dataTotal);
+          log.debug('arr2digits', arr2digits);
+          var arr1digits = agruparNivel1(arr2digits);
+          log.debug('arr1digits', arr1digits);
+          //Generar excel final del reporte
+          if (arr1digits.length != 0) {
+            GenerarExcel(dataTotal, arr2digits, arr1digits);
+          } else {
+            RecordNoData();
+          }
         } else {
-          log.debug('No hay data ni de saldos ni de movimientos.', 'No se actualiza archivo.')
+          //actualizar archivo temporal
+          if (dataTotal.length != 0) {
+            var nameFile = 'INVENTARIO_BALANCE_TEMPORAL';
+            saveFile(formatear(dataTotal), nameFile, 'txt');
+          } else {
+            log.debug('No hay data ni de saldos ni de movimientos.', 'No se actualiza archivo.')
+          }
+          //llamar de nuevo a map reduce con el siguiente numero PUC
+          paramPUC++;
+          llamarMapReduce();
         }
-        //llamar de nuevo a map reduce con el siguiente numero PUC
-        paramPUC++;
-        //if (paramPUC != 3) {
-        llamarMapReduce();
-        //}
-      }
 
-      /*} catch (err) {
+      } catch (err) {
         libreria.sendMail(LMRY_script, ' [ execute ] ' + err);
         //var varMsgError = 'No se pudo procesar el Schedule.';
-      }*/
+      }
 
     }
 
@@ -353,7 +331,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       return strTotal;
     }
 
-    function juntarSaldoYMoviemiento(arrDataSaldo, arrDataMovimiento) {
+    function juntarSaldoYMovimiento(arrDataSaldo, arrDataMovimiento) {
       var arrTotal = arrDataSaldo;
 
       for (var i = 0; i < arrTotal.length; i++) {
@@ -375,8 +353,8 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           }
         }
       }
-      log.debug('arrTotal', arrTotal);
-      log.debug('arrDataMovimiento', arrDataMovimiento);
+      //log.debug('arrTotal', arrTotal);
+      //log.debug('arrDataMovimiento', arrDataMovimiento);
       for (var i = 0; i < arrDataMovimiento.length; i++) {
         var arrMovimientosN = new Array();
         arrMovimientosN.push(arrDataMovimiento[i][0]);
@@ -389,13 +367,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         arrMovimientosN.push(json.puc1);
         arrTotal.push(arrMovimientosN);
       }
-      /*ArrMovimientos.map( e => {
-        e[1] = '';
-        e[2] = '';
-        e[3] = e[7];
-        return (e.splice(4));
-      });
-      arrTotal = arrTotal.concat(ArrMovimientos);*/
       arrTotal = OrdenarCuentas(arrTotal);
       return arrTotal;
     }
@@ -693,17 +664,17 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       var montoTotal1Dig = arr1D.reduce(function(contador, e) {
         return contador + e[2];
       }, 0)
-      log.debug('montoTotal1Dig',montoTotal1Dig);
+      log.debug('montoTotal1Dig', montoTotal1Dig);
       var montoTotal2Dig = arr2D.reduce(function(contador, e) {
         return contador + e[2];
       }, 0)
-      log.debug('montoTotal2Dig',montoTotal2Dig);
+      log.debug('montoTotal2Dig', montoTotal2Dig);
 
       xlsString += '<Row>';
       //xlsString += '<Cell></Cell>';
       xlsString += '<Cell></Cell>';
       xlsString += '<Cell  ss:StyleID="s22"><Data ss:Type="String">DIFERENCIA</Data></Cell>';
-      xlsString += '<Cell ss:StyleID="s23"><Data ss:Type="Number">' +(montoTotal1Dig - montoTotal2Dig)+ '</Data></Cell>';
+      xlsString += '<Cell ss:StyleID="s23"><Data ss:Type="Number">' + (montoTotal1Dig - montoTotal2Dig) + '</Data></Cell>';
       xlsString += '</Row>';
       xlsString += '</Table></Worksheet></Workbook>';
 
@@ -988,7 +959,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       // Control de Memoria
       var intDMaxReg = 1000;
       var intDMinReg = 0;
-      var arrQuiebre = new Array();
       // Exedio las unidades
       var DbolStop = false;
       var arrCuatroDigitos = new Array();
@@ -1095,7 +1065,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
           for (var i = 0; i < intLength; i++) {
             var columns = objResult[i].columns;
-            arrQuiebre = new Array();
+            var arrQuiebre = new Array();
 
             for (var col = 0; col < columns.length; col++) {
               if (col == 7) {
@@ -1437,31 +1407,26 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         type: 'customrecord_lmry_co_rpt_generator_log',
         id: paramLogId
       });
-
       //Nombre de Archivo
       record.setValue({
         fieldId: 'custrecord_lmry_co_rg_name',
         value: 'No existe informacion para los criterios seleccionados.'
       });
-
       //Nombre de Reporte
       record.setValue({
         fieldId: 'custrecord_lmry_co_rg_transaction',
         value: 'CO - Libro de Inventario y Balance 2.0'
       });
-
       //Nombre de Subsidiaria
       record.setValue({
         fieldId: 'custrecord_lmry_co_rg_subsidiary',
         value: companyname
       });
-
       //Periodo
       record.setValue({
         fieldId: 'custrecord_lmry_co_rg_postingperiod',
         value: periodname
       });
-
       //Multibook
       if (featMulti) {
         record.setValue({
@@ -1469,7 +1434,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           value: multibookName
         });
       }
-
       //Creado Por
       record.setValue({
         fieldId: 'custrecord_lmry_co_rg_employee',
