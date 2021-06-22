@@ -29,7 +29,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var paramMultibook = 1;
     var paramRecordID = "";
     var paramSubsidy = 3;
-    var paramPeriod = 365;
+    var paramPeriod = 123;
     var paramPUC = objContext.getParameter({
       name: 'custscript_test_invbal_lastpuc'
     });
@@ -204,8 +204,8 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         if (ArrYearPeriods.length != 0) {
           ArrYearPeriods = ArrYearPeriods.map(function rem(e) {return e[0]});
           log.debug('ArrYearPeriods total',ArrYearPeriods);
-          ArrYearPeriods = ArrYearPeriods[0] + ',' + ArrYearPeriods[ArrYearPeriods.length - 1];
-          //log.debug('ArrYearPeriods total',ArrYearPeriods);
+          ArrYearPeriods = ArrYearPeriods.join(',');
+          //ArrYearPeriods = ArrYearPeriods[0] + ',' + ArrYearPeriods[ArrYearPeriods.length - 1];
         }else{
           ArrYearPeriods = '';
         }
@@ -315,7 +315,11 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             // 3. Balance
             for (var j = 0; j < columns.length; j++) {
               if (objResult[i].getValue(columns[j]) != null && objResult[i].getValue(columns[j]) != '- None -' && objResult[i].getValue(columns[j]) != 'NaN' && objResult[i].getValue(columns[j]) != 'undefined') {
-                arrAuxiliar[j] = objResult[i].getValue(columns[j]);
+                if (j != 0) {
+                  arrAuxiliar[j] = redondear(objResult[i].getValue(columns[j]));
+                }else{
+                  arrAuxiliar[j] = objResult[i].getValue(columns[j]);
+                }
               } else {
                 arrAuxiliar[j] = '';
               }
@@ -334,6 +338,10 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       }
 
       return ArrReturn;
+    }
+
+    function redondear(number) {
+      return Math.round(Number(number) * 100) / 100;
     }
 
     function actualizarThirdProc(anioProcesado) {
@@ -449,7 +457,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       }
 
       var id = record.save();
-      log.debug('Se actualizo third data', 'entity: '+JSON.stringify(json_entity));
+      //log.debug('Se actualizo third data', 'entity: '+JSON.stringify(json_entity));
     }
 
     function AgruparPorCuenta(ArrTemp) {

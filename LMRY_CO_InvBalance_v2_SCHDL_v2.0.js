@@ -64,10 +64,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
     var featMulti = null;
 
     function execute(context) {
-      try {
+      //try {
         ObtenerParametrosYFeatures();
         PeriodosRestantes = paramPeriodsRestantes.split(',');
-        //PeriodosRestantes = PeriodosRestantes.map(function e(p) {return Number(p)});
+        PeriodosRestantes = PeriodosRestantes.map(function e(p) {return Number(p)});
         //obtener saldo anterior
         obtenerDataAnterior(); //obtiene data de archivo temporal, seteando en 2 variables SaldoAnteriorPUC, SaldoAnterior
         //obtener Movimientos
@@ -127,10 +127,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           llamarMapReduce();
         }
 
-      } catch (err) {
+      /*} catch (err) {
         libreria.sendMail(LMRY_script, ' [ execute ] ' + err);
         //var varMsgError = 'No se pudo procesar el Schedule.';
-      }
+      }*/
 
     }
 
@@ -876,33 +876,15 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         savedsearch.filters.push(subsidiaryFilter);
       }
 
-      var periodFieldFROM = search.lookupFields({
-        type: search.Type.ACCOUNTING_PERIOD,
-        id: PeriodosRestantes[0],
-        columns: ['startdate']
-      });
-
-      var periodFieldTO = search.lookupFields({
-        type: search.Type.ACCOUNTING_PERIOD,
-        id: PeriodosRestantes[1],
-        columns: ['enddate']
-      });
-
+      var periodosSTR = PeriodosRestantes.toString();
+      log.debug('periodosSTR',periodosSTR);
       var periodFilterFROM = search.createFilter({
-        name: 'trandate',
-        join: 'transaction',
-        operator: search.Operator.ONORAFTER,
-        values: [periodFieldFROM.startdate]
+        name: 'formulanumeric',
+        formula: 'CASE WHEN {transaction.postingperiod.id} IN ('+periodosSTR+') THEN 1 ELSE 0 END',
+        operator: search.Operator.EQUALTO,
+        values: [1]
       });
       savedsearch.filters.push(periodFilterFROM);
-
-      var periodFilterTO = search.createFilter({
-        name: 'trandate',
-        join: 'transaction',
-        operator: search.Operator.ONORBEFORE,
-        values: [periodFieldTO.enddate]
-      });
-      savedsearch.filters.push(periodFilterTO);
 
       var multibookFilter = search.createFilter({
         name: 'accountingbook',
@@ -987,31 +969,15 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         savedsearch.filters.push(subsidiaryFilter);
       }
 
-      var periodFieldFROM = search.lookupFields({
-        type: search.Type.ACCOUNTING_PERIOD,
-        id: PeriodosRestantes[0],
-        columns: ['startdate']
-      });
-
-      var periodFieldTO = search.lookupFields({
-        type: search.Type.ACCOUNTING_PERIOD,
-        id: PeriodosRestantes[1],
-        columns: ['enddate']
-      });
-
+      var periodosSTR = PeriodosRestantes.toString();
+      log.debug('periodosSTR',periodosSTR);
       var periodFilterFROM = search.createFilter({
-        name: 'trandate',
-        operator: search.Operator.ONORAFTER,
-        values: [periodFieldFROM.startdate]
+        name: 'formulanumeric',
+        formula: 'CASE WHEN {postingperiod.id} IN ('+periodosSTR+') THEN 1 ELSE 0 END',
+        operator: search.Operator.EQUALTO,
+        values: [1]
       });
       savedsearch.filters.push(periodFilterFROM);
-
-      var periodFilterTO = search.createFilter({
-        name: 'trandate',
-        operator: search.Operator.ONORBEFORE,
-        values: [periodFieldTO.enddate]
-      });
-      savedsearch.filters.push(periodFilterTO);
 
       if (featMulti) {
         var multibookFilter = search.createFilter({
