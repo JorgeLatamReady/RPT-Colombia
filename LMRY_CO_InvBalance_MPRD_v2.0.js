@@ -26,15 +26,23 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var objContext = runtime.getCurrentScript();
     var LMRY_script = "LMRY_CO_InvBalance_MPRD_v2.0.js";
 
-    var paramMultibook = 1;
-    var paramRecordID = "";
-    var paramSubsidy = 3;
-    var paramPeriod = 123;
+    var paramMultibook = objContext.getParameter({
+      name: 'custscript_lmry_invbal_multibook'
+    });
+    var paramRecordID = objContext.getParameter({
+      name: 'custscript_lmry_invbal_logid'
+    });
+    var paramSubsidy = objContext.getParameter({
+      name: 'custscript_lmry_invbal_subsi'
+    });
+    var paramPeriod = objContext.getParameter({
+      name: 'custscript_lmry_invbal_periodo'
+    });
     var paramPUC = objContext.getParameter({
-      name: 'custscript_test_invbal_lastpuc'
+      name: 'custscript_lmry_invbal_lastpuc'
     });
     var paramFileID = objContext.getParameter({
-      name: 'custscript_test_invbal_fileid'
+      name: 'custscript_lmry_invbal_fileid'
     });
 
     var ArrData = new Array();
@@ -114,7 +122,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         return ArrData;
 
       } catch (err) {
-        log.error('err', err);
+        log.error('error getInputData', err);
         libreria.sendMail(LMRY_script, ' [ getInputData ] ' + err);
       }
     }
@@ -180,10 +188,15 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         log.debug('summarize', 'summarize');
         ParametrosYFeatures();
         // Obtiene los periodos Fiscal Year (desde el inicio hasta un año antes del periodo de generación)
-        ArrYears = ObtenerAñosFiscales();
+        var ArrYears = ObtenerAñosFiscales();
         OrdenarAños(ArrYears);
-        //log.debug('ArrYears en summarize', ArrYears);
-        var arrSaldoAnterior = obtenerSaldoAnterior(ArrYears[ArrYears.length - 1][1]); //saldos del inicio de los tiempos hasta un año antes al periodo de generación.
+
+        var arrSaldoAnterior = new Array();
+        if (ArrYears.length != 0) {
+          arrSaldoAnterior = obtenerSaldoAnterior(ArrYears[ArrYears.length - 1][1]); //saldos del inicio de los tiempos hasta un año antes al periodo de generación.
+        } else{
+          log.debug('No hay saldo anterior',  'Generación desde el año inicial');
+        }
         log.debug('arrSaldoAnterior',arrSaldoAnterior);
 
         if (paramFileID == null || paramFileID == '') {
@@ -212,8 +225,8 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         llamarSchedule(idfile,ArrYearPeriods);
 
       } catch (err) {
-        log.error('err', err);
-        libreria.sendMail(LMRY_script, ' [ getInputData ] ' + err);
+        log.error('error summarize', err);
+        libreria.sendMail(LMRY_script, ' [ summarize ] ' + err);
       }
     }
 
@@ -259,8 +272,8 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var ArrReturn = new Array();
 
       var savedsearch = search.load({
-        /*LatamTest - CO Inventory and Balance Third Data*/
-        id: 'customsearch_test_co_inv_bal'
+        /*LatamReady - CO Inventory and Balance Third Data*/
+        id: 'customsearch_lmry_co_inv_bal'
       });
 
       var pucFilter = search.createFilter({
@@ -638,23 +651,23 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
     function llamarSchedule(idfile , periodMov) {
       var params = {};
-      params['custscript_test_co_invbalv2_logid'] = paramRecordID;
-      params['custscript_test_co_invbalv2_periodo'] = paramPeriod;
-      params['custscript_test_co_invbalv2_fileid'] = idfile;
-      params['custscript_test_co_invbalv2_puc'] = paramPUC;
-      params['custscript_test_co_invbalv2_period_res'] = periodMov;
+      params['custscript_lmry_co_invbalv2_logid'] = paramRecordID;
+      params['custscript_lmry_co_invbalv2_periodo'] = paramPeriod;
+      params['custscript_lmry_co_invbalv2_fileid'] = idfile;
+      params['custscript_lmry_co_invbalv2_puc'] = paramPUC;
+      params['custscript_lmry_co_invbalv2_period_res'] = periodMov;
 
       if (featuresubs) {
-        params['custscript_test_co_invbalv2_subsi'] = paramSubsidy;
+        params['custscript_lmry_co_invbalv2_subsi'] = paramSubsidy;
       }
       if (feamultibook) {
-        params['custscript_test_co_invbalv2_multibook'] = paramMultibook
+        params['custscript_lmry_co_invbalv2_multibook'] = paramMultibook
       }
 
       var RedirecSchdl = task.create({
         taskType: task.TaskType.SCHEDULED_SCRIPT,
-        scriptId: 'customscript_test_co_inv_bal_v2_schdl',
-        deploymentId: 'customdeploy_test_co_inv_bal_v2_schdl',
+        scriptId: 'customscript_lmry_co_inv_bal_v2_schdl',
+        deploymentId: 'customdeploy_lmry_co_inv_bal_v2_schdl',
         params: params
       });
       log.debug('llamando a schedule');

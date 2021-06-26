@@ -64,10 +64,12 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
     var featMulti = null;
 
     function execute(context) {
-      //try {
+      try {
         ObtenerParametrosYFeatures();
         PeriodosRestantes = paramPeriodsRestantes.split(',');
-        PeriodosRestantes = PeriodosRestantes.map(function e(p) {return Number(p)});
+        PeriodosRestantes = PeriodosRestantes.map(function e(p) {
+          return Number(p)
+        });
         //obtener saldo anterior
         obtenerDataAnterior(); //obtiene data de archivo temporal, seteando en 2 variables SaldoAnteriorPUC, SaldoAnterior
         //obtener Movimientos
@@ -83,6 +85,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
           if (featMulti) {
             var ArrMovimientosSpecific = ObtieneSpecificTransaction();
+            log.debug('ArrMovimientos specific', ArrMovimientos);
             ArrMovimientos = ArrMovimientos.concat(ArrMovimientosSpecific);
 
             if (!ValidatePrimaryBook() || ValidatePrimaryBook() != 'T') {
@@ -93,6 +96,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
           if (ArrMovimientos.length > 1) {
             ArrMovimientos = OrdenarCuentas(ArrMovimientos);
+            log.debug('ArrMovimientos ordenadas',ArrMovimientos);
             ArrMovimientos = AgruparCuentas(ArrMovimientos);
             log.debug('Data Movimientos en Año de generación agrupada 4D', ArrMovimientos); //hasta el periodo de generación incluido
           }
@@ -112,7 +116,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           if (arr1digits.length != 0) {
             GenerarExcel(dataTotal, arr2digits, arr1digits);
           } else {
-            /*RecordNoData();*/
+            RecordNoData();
           }
         } else {
           //actualizar archivo temporal
@@ -127,10 +131,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           llamarMapReduce();
         }
 
-      /*} catch (err) {
+      } catch (err) {
         libreria.sendMail(LMRY_script, ' [ execute ] ' + err);
         //var varMsgError = 'No se pudo procesar el Schedule.';
-      }*/
+      }
 
     }
 
@@ -143,6 +147,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         } else if (i != arrData.length - 1) {
           if (arrData[i][0].substring(0, 2) == arrData[i - 1][0].substring(0, 2)) {
             importe += Number(arrData[i][3]);
+            importe = redondear(importe);
           } else {
             var result = new Array();
             result.push(arrData[i - 1][0].substring(0, 2)); //puc
@@ -155,6 +160,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         } else {
           if (arrData[i][0].substring(0, 2) == arrData[i - 1][0].substring(0, 2)) {
             importe += Number(arrData[i][3]);
+            importe = redondear(importe);
           } else {
             var result = new Array();
             result.push(arrData[i - 1][0].substring(0, 2)); //puc
@@ -184,6 +190,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         } else if (i != arrData.length - 1) {
           if (arrData[i][0].substring(0, 1) == arrData[i - 1][0].substring(0, 1)) {
             importe += Number(arrData[i][2]);
+            importe = redondear(importe);
           } else {
             var result = new Array();
             result.push(arrData[i - 1][0].substring(0, 1)); //puc
@@ -195,6 +202,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         } else {
           if (arrData[i][0].substring(0, 1) == arrData[i - 1][0].substring(0, 1)) {
             importe += Number(arrData[i][2]);
+            importe = redondear(importe);
           } else {
             var result = new Array();
             result.push(arrData[i - 1][0].substring(0, 1)); //puc
@@ -302,21 +310,21 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
 
     function llamarMapReduce() {
       var params = {};
-      params['custscript_test_invbal_logid'] = paramLogId;
-      params['custscript_test_invbal_periodo'] = paramPeriodo;
-      params['custscript_test_invbal_fileid'] = paramFile;
-      params['custscript_test_invbal_lastpuc'] = paramPUC;
+      params['custscript_lmry_invbal_logid'] = paramLogId;
+      params['custscript_lmry_invbal_periodo'] = paramPeriodo;
+      params['custscript_lmry_invbal_fileid'] = paramFile;
+      params['custscript_lmry_invbal_lastpuc'] = paramPUC;
       if (featSubsi) {
-        params['custscript_test_invbal_subsi'] = paramSubsidi;
+        params['custscript_lmry_invbal_subsi'] = paramSubsidi;
       }
       if (featMulti) {
-        params['custscript_test_invbal_multibook'] = paramMulti;
+        params['custscript_lmry_invbal_multibook'] = paramMulti;
       }
 
       var RedirecSchdl = task.create({
         taskType: task.TaskType.MAP_REDUCE,
-        scriptId: 'customscript_test_co_inv_bal_mprd',
-        deploymentId: 'customdeploy_test_co_inv_bal_mprd',
+        scriptId: 'customscript_lmry_co_inv_bal_mprd',
+        deploymentId: 'customdeploy_lmry_co_inv_bal_mprd',
         params: params
       });
       log.debug('llamando a map reduce para PUC', params);
@@ -344,7 +352,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         var j = 0;
         while (j < cant) {
           if (arrTotal[i][0] == arrDataMovimiento[j][0]) {
-            arrTotal[i][3] = Number(arrTotal[i][3]) + Number(arrDataMovimiento[j][7]);
+            //log.debug('arrDataMovimiento[i][3]',arrTotal[i][3]);
+            //log.debug('arrDataMovimiento[j][7]',arrDataMovimiento[j][7]);
+            arrTotal[i][3] = redondear(Number(arrTotal[i][3]) + Number(arrDataMovimiento[j][7]));
+            //log.debug('arrTotal[i][3]',arrTotal[i][3]);
             arrDataMovimiento.splice(j, 1);
             cant--;
             break;
@@ -544,7 +555,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
           var intLength = ArrReturn.length;
           for (var j = 0; j < intLength; j++) {
             if (ArrReturn[j][0] == ArrTemp[i][0]) {
-              ArrReturn[j][7] = Number(ArrReturn[j][7]) + Number(ArrTemp[i][7]);
+              //log.debug('ArrReturn[j][7]',ArrReturn[j][7]);
+              //log.debug('ArrReturn[i][7]',ArrTemp[i][7]);
+              ArrReturn[j][7] = redondear(ArrReturn[j][7] + ArrTemp[i][7]);
+              //log.debug('ArrReturn[j][7] result',ArrReturn[j][7]);
               break;
             }
             if (j == ArrReturn.length - 1) {
@@ -662,11 +676,11 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       // CAMBIO 2016/04/14 - FILA DIFERENCIA
       // Operacion con las Cuentas de 1 Digito (ACTIVOS + GASTOS - INGRESOS - PASIVO - PATRIMONIO)
       var montoTotal1Dig = arr1D.reduce(function(contador, e) {
-        return contador + e[2];
+        return redondear(contador + e[2]);
       }, 0)
       log.debug('montoTotal1Dig', montoTotal1Dig);
       var montoTotal2Dig = arr2D.reduce(function(contador, e) {
-        return contador + e[2];
+        return redondear(contador + e[2]);
       }, 0)
       log.debug('montoTotal2Dig', montoTotal2Dig);
 
@@ -699,148 +713,8 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       return accbook_check.isprimary;
     }
 
-    function LlenarArregloDosDigitos(arrCuatroDigitos) {
-      var aux_id_2_digitos = arrCuatroDigitos[0][2];
-
-      var primerArrAux = new Array();
-      primerArrAux[0] = arrCuatroDigitos[0][2];
-      primerArrAux[1] = arrCuatroDigitos[0][3];
-      primerArrAux[2] = arrCuatroDigitos[0][2];
-      primerArrAux[3] = arrCuatroDigitos[0][3];
-      primerArrAux[4] = arrCuatroDigitos[0][4];
-      primerArrAux[5] = arrCuatroDigitos[0][5];
-      primerArrAux[6] = arrCuatroDigitos[0][6];
-      //  primerArrAux[7] = arrCuatroDigitos[i][7];
-      primerArrAux[7] = 0.0;
-      primerArrAux[8] = arrCuatroDigitos[0][8];
-      primerArrAux[9] = arrCuatroDigitos[0][9];
-
-
-      arrCuatroDigitos.splice(0, 0, primerArrAux);
-
-      var arr_2_digitos = new Array();
-
-      var cont = 0;
-
-      arr_2_digitos[cont] = primerArrAux;
-      cont++;
-
-      for (var i = 0; i < arrCuatroDigitos.length; i++) {
-        if (aux_id_2_digitos != arrCuatroDigitos[i][2]) {
-          aux_id_2_digitos = arrCuatroDigitos[i][2];
-
-          var arr = new Array();
-
-          arr[0] = arrCuatroDigitos[i][2];
-          arr[1] = arrCuatroDigitos[i][3];
-          arr[2] = arrCuatroDigitos[i][2];
-          arr[3] = arrCuatroDigitos[i][3];
-          arr[4] = arrCuatroDigitos[i][4];
-          arr[5] = arrCuatroDigitos[i][5];
-          arr[6] = arrCuatroDigitos[i][6];
-          arr[7] = 0.0;
-          arr[8] = arrCuatroDigitos[i][8];
-          arr[9] = arrCuatroDigitos[i][9];
-
-
-          arrCuatroDigitos.splice(i, 0, arr);
-
-          arr_2_digitos[cont] = arr;
-          cont++;
-        }
-      }
-      for (var i = 0; i < arr_2_digitos.length; i++) {
-        for (var j = 0; j < arrCuatroDigitos.length; j++) {
-          if (arr_2_digitos[i][0] == arrCuatroDigitos[j][2]) {
-            arr_2_digitos[i][7] += Number(arrCuatroDigitos[j][7]);
-          }
-        }
-      }
-      //log.debug('arr_2_digitos',arr_2_digitos);
-      for (var i = 0; i < arr_2_digitos.length; i++) {
-        for (var j = 0; j < arrCuatroDigitos.length; j++) {
-          if (arrCuatroDigitos[j][0] == arr_2_digitos[i][0]) {
-            arrCuatroDigitos[j][7] = arr_2_digitos[i][7];
-          }
-        }
-        //Se acumula monto de cuentas hijas validando que los numeros de cuenta no sean nulos.
-        if (arr_2_digitos[i][0] != "" && arr_2_digitos[i][0] != "- None -" && arr_2_digitos[i][0] != null) {
-          montoTotal2Dig += arr_2_digitos[i][7];
-        }
-      }
-      montoTotal2Dig = redondear(montoTotal2Dig);
-    }
-
     function redondear(number) {
       return Math.round(Number(number) * 100) / 100;
-    }
-
-    function LlenarArregloUnDigitos(arrCuatroDigitos) {
-      var aux_id_1_digitos = arrCuatroDigitos[0][4];
-
-      var primerArrAux = new Array();
-      primerArrAux[0] = arrCuatroDigitos[0][4];
-      primerArrAux[1] = arrCuatroDigitos[0][5];
-      primerArrAux[2] = arrCuatroDigitos[0][2];
-      primerArrAux[3] = arrCuatroDigitos[0][3];
-      primerArrAux[4] = arrCuatroDigitos[0][4];
-      primerArrAux[5] = arrCuatroDigitos[0][5];
-      primerArrAux[6] = arrCuatroDigitos[0][6];
-      primerArrAux[7] = 0.0;
-      primerArrAux[8] = arrCuatroDigitos[0][8];
-      primerArrAux[9] = arrCuatroDigitos[0][9];
-
-
-      arrCuatroDigitos.splice(0, 0, primerArrAux);
-
-      var arr_1_digitos = new Array();
-
-      var cont = 0;
-
-      arr_1_digitos[cont] = primerArrAux;
-      cont++;
-      for (var i = 0; i < arrCuatroDigitos.length; i++) {
-        if (aux_id_1_digitos != arrCuatroDigitos[i][4]) {
-          aux_id_1_digitos = arrCuatroDigitos[i][4];
-
-          var arr = new Array();
-
-          arr[0] = arrCuatroDigitos[i][4];
-          arr[1] = arrCuatroDigitos[i][5];
-          arr[2] = arrCuatroDigitos[i][2];
-          arr[3] = arrCuatroDigitos[i][3];
-          arr[4] = arrCuatroDigitos[i][4];
-          arr[5] = arrCuatroDigitos[i][5];
-          arr[6] = arrCuatroDigitos[i][6];
-          arr[7] = 0.0;
-          arr[8] = arrCuatroDigitos[i][8];
-          arr[9] = arrCuatroDigitos[i][9];
-
-
-          arrCuatroDigitos.splice(i, 0, arr);
-
-          arr_1_digitos[cont] = arr;
-          cont++;
-        }
-      }
-
-      for (var i = 0; i < arr_1_digitos.length; i++) {
-        for (var j = 0; j < arrCuatroDigitos.length; j++) {
-          if ((arr_1_digitos[i][0] == arrCuatroDigitos[j][4]) && arrCuatroDigitos[j][0].length == 2) {
-            arr_1_digitos[i][7] += Number(arrCuatroDigitos[j][7]);
-          }
-        }
-      }
-      //log.debug('arr_1_digitos',arr_1_digitos);
-      for (var i = 0; i < arr_1_digitos.length; i++) {
-        for (var j = 0; j < arrCuatroDigitos.length; j++) {
-          if (arrCuatroDigitos[j][0] == arr_1_digitos[i][0]) {
-            arrCuatroDigitos[j][7] = arr_1_digitos[i][7];
-          }
-        }
-        montoTotal1Dig += arr_1_digitos[i][7];
-      }
-      montoTotal1Dig = redondear(montoTotal1Dig);
     }
 
     function ObtieneSpecificTransaction() {
@@ -877,10 +751,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       }
 
       var periodosSTR = PeriodosRestantes.toString();
-      log.debug('periodosSTR',periodosSTR);
+      log.debug('periodosSTR', periodosSTR);
       var periodFilterFROM = search.createFilter({
         name: 'formulanumeric',
-        formula: 'CASE WHEN {transaction.postingperiod.id} IN ('+periodosSTR+') THEN 1 ELSE 0 END',
+        formula: 'CASE WHEN {transaction.postingperiod.id} IN (' + periodosSTR + ') THEN 1 ELSE 0 END',
         operator: search.Operator.EQUALTO,
         values: [1]
       });
@@ -914,14 +788,17 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
               if (col == 8) {
                 arrQuiebre[col] = objResult[i].getText(columns[col]);
               } else if (col == 7) {
-                arrQuiebre[col] = objResult[i].getValue(columns[col]) * objResult[i].getValue(columns[10]);
+                arrQuiebre[col] = redondear( objResult[i].getValue(columns[col]) * objResult[i].getValue(columns[10]) );
               } else {
                 arrQuiebre[col] = objResult[i].getValue(columns[col]);
               }
             }
 
-            arrCuatroDigitos[_contg] = arrQuiebre;
-            _contg++;
+            if (arrQuiebre[7] != 0) {
+              arrCuatroDigitos[_contg] = arrQuiebre;
+              _contg++;
+            }
+
           }
 
           intDMinReg = intDMaxReg;
@@ -970,10 +847,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       }
 
       var periodosSTR = PeriodosRestantes.toString();
-      log.debug('periodosSTR',periodosSTR);
+      log.debug('periodosSTR', periodosSTR);
       var periodFilterFROM = search.createFilter({
         name: 'formulanumeric',
-        formula: 'CASE WHEN {postingperiod.id} IN ('+periodosSTR+') THEN 1 ELSE 0 END',
+        formula: 'CASE WHEN {postingperiod.id} IN (' + periodosSTR + ') THEN 1 ELSE 0 END',
         operator: search.Operator.EQUALTO,
         values: [1]
       });
@@ -1036,17 +913,19 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
             for (var col = 0; col < columns.length; col++) {
               if (col == 7) {
                 if (featMulti) {
-                  arrQuiebre[col] = objResult[i].getValue(columns[12]);
+                  arrQuiebre[col] = redondear(objResult[i].getValue(columns[12]));
                 } else {
-                  arrQuiebre[col] = objResult[i].getValue(columns[7]);
+                  arrQuiebre[col] = redondear(objResult[i].getValue(columns[7]));
                 }
               } else {
                 arrQuiebre[col] = objResult[i].getValue(columns[col]);
               }
             }
 
-            arrCuatroDigitos[_contg] = arrQuiebre;
-            _contg++;
+            if (arrQuiebre[7] != 0) {
+              arrCuatroDigitos[_contg] = arrQuiebre;
+              _contg++;
+            }
           }
           intDMinReg = intDMaxReg;
           intDMaxReg += 1000;
@@ -1273,7 +1152,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
         var idfile = file.save();
         log.debug('Se actualizo archivo temporal con id: ', idfile);
         // Trae URL de archivo generado
-        /*if (extension == 'xls') {
+        if (extension == 'xls') {
           var idfile2 = fileModulo.load({
             id: idfile
           });
@@ -1346,7 +1225,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
             libreria.sendrptuser('CO - Libro de Inventario y Balance 2.0', 3, nameFile);
           }
         }
-        */
+
       } else {
         // Debug
         log.error({
@@ -1460,8 +1339,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       return '';
     }
 
-
-
     function ValidateCountry(subsidiary) {
       try {
         if (subsidiary != '' && subsidiary != null) {
@@ -1530,32 +1407,30 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       return auxmess;
     }
 
-
-
     function ObtenerParametrosYFeatures() {
       //Parametros
       var objContext = runtime.getCurrentScript();
 
       paramSubsidi = objContext.getParameter({
-        name: 'custscript_test_co_invbalv2_subsi'
+        name: 'custscript_lmry_co_invbalv2_subsi'
       });
       paramPeriodo = objContext.getParameter({
-        name: 'custscript_test_co_invbalv2_periodo'
+        name: 'custscript_lmry_co_invbalv2_periodo'
       });
       paramPeriodsRestantes = objContext.getParameter({
-        name: 'custscript_test_co_invbalv2_period_res'
+        name: 'custscript_lmry_co_invbalv2_period_res'
       });
       paramMulti = objContext.getParameter({
-        name: 'custscript_test_co_invbalv2_multibook'
+        name: 'custscript_lmry_co_invbalv2_multibook'
       });
       paramLogId = objContext.getParameter({
-        name: 'custscript_test_co_invbalv2_logid'
+        name: 'custscript_lmry_co_invbalv2_logid'
       });
       paramPUC = objContext.getParameter({
-        name: 'custscript_test_co_invbalv2_puc' //primer digito
+        name: 'custscript_lmry_co_invbalv2_puc' //primer digito
       });
       paramFile = objContext.getParameter({
-        name: 'custscript_test_co_invbalv2_fileid'
+        name: 'custscript_lmry_co_invbalv2_fileid'
       });
       //Features
       featSubsi = runtime.isFeatureInEffect({
@@ -1621,8 +1496,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/encode", "N/search",
       var result_f_temp2 = result_f_temp.run();
       result_f = result_f_temp2.getRange(0, 1000);
     }
-
-
 
     return {
       execute: execute
