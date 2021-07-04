@@ -27,22 +27,25 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var LMRY_script = "LMRY_CO_InvBalance_MPRD_v2.0.js";
 
     var paramMultibook = objContext.getParameter({
-      name: 'custscript_lmry_invbal_multibook'
+      name: 'custscript_test_invbal_multibook'
     });
     var paramRecordID = objContext.getParameter({
-      name: 'custscript_lmry_invbal_logid'
+      name: 'custscript_test_invbal_logid'
     });
     var paramSubsidy = objContext.getParameter({
-      name: 'custscript_lmry_invbal_subsi'
+      name: 'custscript_test_invbal_subsi'
     });
     var paramPeriod = objContext.getParameter({
-      name: 'custscript_lmry_invbal_periodo'
+      name: 'custscript_test_invbal_periodo'
     });
     var paramPUC = objContext.getParameter({
-      name: 'custscript_lmry_invbal_lastpuc'
+      name: 'custscript_test_invbal_lastpuc'
     });
     var paramFileID = objContext.getParameter({
-      name: 'custscript_lmry_invbal_fileid'
+      name: 'custscript_test_invbal_fileid'
+    });
+    var paramAdjustment = objContext.getParameter({
+      name: 'custscript_test_invbal_adjust'
     });
 
     var ArrData = new Array();
@@ -73,7 +76,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
     function getInputData() {
       try {
-        log.debug('getInputData:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC + ' FILE ID -' + paramFileID);
+        log.debug('getInputData:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC + ' FILE ID -' + paramFileID + ' ADJUST -' + paramAdjustment);
         ParametrosYFeatures();
         // Obtiene años ya procesados
         var ArrProcessedYears = ObtenerAñosProcesados();
@@ -273,7 +276,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
       var savedsearch = search.load({
         /*LatamReady - CO Inventory and Balance Third Data*/
-        id: 'customsearch_lmry_co_inv_bal'
+        id: 'customsearch_test_co_inv_bal'
       });
 
       var pucFilter = search.createFilter({
@@ -304,6 +307,15 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           name: 'custrecord_lmry_co_terceros_multibook',
           operator: search.Operator.IS,
           values: [paramMultibook]
+        });
+        savedsearch.filters.push(multibookFilter);
+      }
+
+      if (!paramAdjustment) {
+        var adjustFilter = search.createFilter({
+          name: 'custrecord_lmry_co_terceros_adjust',
+          operator: search.Operator.IS,
+          values: false
         });
         savedsearch.filters.push(multibookFilter);
       }
@@ -468,6 +480,11 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           value: '' + paramSubsidy
         });
       }
+      // 7. IS adjust
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_terceros_subsi',
+        value: '' + paramSubsidy
+      });
 
       var id = record.save();
       //log.debug('Se actualizo third data', 'entity: '+JSON.stringify(json_entity));
@@ -999,21 +1016,21 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         });
         savedsearch.filters.push(multibookFilter);
 
-        //columan4
+        //columan5
         var columnaDebit = search.createColumn({
           name: 'formulacurrency',
           formula: "{accountingtransaction.debitamount}",
           summary: 'SUM'
         });
         savedsearch.columns.push(columnaDebit);
-        //columna5
+        //columna6
         var columnaCredit = search.createColumn({
           name: 'formulacurrency',
           formula: "{accountingtransaction.creditamount}",
           summary: 'SUM'
         });
         savedsearch.columns.push(columnaCredit);
-        //columna6
+        //columna7
         var columnaActMulti = search.createColumn({
           name: 'account',
           join: 'accountingtransaction',
@@ -1054,19 +1071,19 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             if (feamultibook || feamultibook == 'T') {
               // 0. Account
               if (objResult[i].getValue(columns[6]) != null && objResult[i].getValue(columns[6]) != '- None -' && objResult[i].getValue(columns[6]) != 'NaN' && objResult[i].getValue(columns[6]) != 'undefined') {
-                arr[0] = objResult[i].getValue(columns[6]);
+                arr[0] = objResult[i].getValue(columns[7]);
               } else {
                 arr[0] = '';
               }
               // 1. Debit
               if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -' && objResult[i].getValue(columns[4]) != 'NaN' && objResult[i].getValue(columns[4]) != 'undefined') {
-                arr[1] = objResult[i].getValue(columns[4]);
+                arr[1] = objResult[i].getValue(columns[5]);
               } else {
                 arr[1] = '';
               }
               // 2. Credit
               if (objResult[i].getValue(columns[5]) != null && objResult[i].getValue(columns[5]) != '- None -' && objResult[i].getValue(columns[5]) != 'NaN' && objResult[i].getValue(columns[5]) != 'undefined') {
-                arr[2] = objResult[i].getValue(columns[5]);
+                arr[2] = objResult[i].getValue(columns[6]);
               } else {
                 arr[2] = '';
               }
@@ -1097,6 +1114,12 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               arr[3] = objResult[i].getValue(columns[3]);
             } else {
               arr[3] = '';
+            }
+            // 4. IS ADJUST
+            if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '' && objResult[i].getValue(columns[4]) != '- None -') {
+              arr[4] = objResult[i].getValue(columns[4]);
+            } else {
+              arr[4] = '';
             }
 
             ArrReturn[cont] = arr;
