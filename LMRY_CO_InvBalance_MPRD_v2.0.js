@@ -110,10 +110,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               arrTemporal = AgruparPorCuenta(arrTemporal); //agrupa por cuenta y entity
 
               for (var x = 0; x < arrTemporal.length; x++) {
-                arrTemporal[x][4] = ArrYears[i][1];
-                if (featuresubs) {
-                  arrTemporal[x][5] = paramSubsidy;
-                }
+                arrTemporal[x].push(ArrYears[i][1]);//5
                 ArrData.push(arrTemporal[x]);
               }
             }
@@ -225,7 +222,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         }else{
           ArrYearPeriods = '';
         }
-        llamarSchedule(idfile,ArrYearPeriods);
+        //llamarSchedule(idfile,ArrYearPeriods);
 
       } catch (err) {
         log.error('error summarize', err);
@@ -419,11 +416,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var record = recordModulo.create({
         type: 'customrecord_lmry_co_terceros_data',
       });
-      // 7. PUC 6
-      record.setValue({
-        fieldId: 'custrecord_lmry_co_terceros_puc6',
-        value: '' + puc
-      });
       // 0. Account
       record.setValue({
         fieldId: 'custrecord_lmry_co_terceros_account',
@@ -464,7 +456,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       // 4. Year
       record.setValue({
         fieldId: 'custrecord_lmry_co_terceros_year',
-        value: arrTemp[4]
+        value: arrTemp[5]
       });
       // 5. Multibook
       if (feamultibook || feamultibook == 'T') {
@@ -480,10 +472,15 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           value: '' + paramSubsidy
         });
       }
-      // 7. IS adjust
+      // 7. PUC 6
       record.setValue({
-        fieldId: 'custrecord_lmry_co_terceros_subsi',
-        value: '' + paramSubsidy
+        fieldId: 'custrecord_lmry_co_terceros_puc6',
+        value: '' + puc
+      });
+      // 8. IS adjust
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_terceros_adjust',
+        value: '' + arrTemp[4]
       });
 
       var id = record.save();
