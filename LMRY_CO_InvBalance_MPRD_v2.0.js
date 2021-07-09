@@ -1141,11 +1141,10 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
       var period_temp = search.lookupFields({
         type: search.Type.ACCOUNTING_PERIOD,
         id: paramPeriod,
-        columns: ['startdate', /*'isadjust',*/ 'enddate']
+        columns: ['startdate','enddate']
       });
 
       periodStartDate = period_temp.startdate;
-      //periodIsAdjust = period_temp.isadjust;
 
       periodYearIni = format.parse({
         value: periodStartDate,
