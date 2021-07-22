@@ -1,7 +1,7 @@
 /* = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =\
 ||   This script for customer center (Time)                     ||
 ||                                                              ||
-||  File Name: LMRY_CO_BalCompTerceros_MPRDC_v2.0.js            ||
+||  File Name: LMRY_CO_InvBalance_MPRD_v2.0.js                  ||
 ||                                                              ||
 ||  Version Date         Author        Remarks                  ||
 ||  2.0     Jun 18 2018  LatamReady    Use Script 2.0           ||
@@ -11,9 +11,9 @@
  * @NScriptType MapReduceScript
  * @NModuleScope Public
  */
-define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/format", "N/record", "N/task", "N/config", "./CO_Library_Mensual/LMRY_CO_Reportes_LBRY_V2.0.js"],
+define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/task", "N/config", "./CO_Library_Mensual/LMRY_CO_Reportes_LBRY_V2.0.js"],
 
-  function(search, log, require, fileModulo, runtime, query, format, recordModulo, task, config, libreria) {
+  function (search, log, fileModulo, runtime, format, recordModulo, task, config, libreria) {
 
     /**
      * Input Data for processing
@@ -27,29 +27,31 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var LMRY_script = "LMRY_CO_InvBalance_MPRD_v2.0.js";
 
     var paramMultibook = objContext.getParameter({
-      name: 'custscript_lmry_invbal_multibook'
+      name: 'custscript_test_invbal_multibook'
     });
     var paramRecordID = objContext.getParameter({
-      name: 'custscript_lmry_invbal_logid'
+      name: 'custscript_test_invbal_logid'
     });
     var paramSubsidy = objContext.getParameter({
-      name: 'custscript_lmry_invbal_subsi'
+      name: 'custscript_test_invbal_subsi'
     });
     var paramPeriod = objContext.getParameter({
-      name: 'custscript_lmry_invbal_periodo'
+      name: 'custscript_test_invbal_periodo'
     });
     var paramPUC = objContext.getParameter({
-      name: 'custscript_lmry_invbal_lastpuc'
+      name: 'custscript_test_invbal_lastpuc'
     });
     var paramFileID = objContext.getParameter({
-      name: 'custscript_lmry_invbal_fileid'
+      name: 'custscript_test_invbal_fileid'
+    });
+    var paramAdjustment = objContext.getParameter({
+      name: 'custscript_test_invbal_adjust'
     });
 
     var ArrData = new Array();
 
     var periodYearIni;
     var periodMonthIni;
-    var periodIsAdjust = false;
     var periodStartDate;
 
     var featuresubs = runtime.isFeatureInEffect({
@@ -58,9 +60,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var feamultibook = runtime.isFeatureInEffect({
       feature: "MULTIBOOK"
     });
-    var featurejobs = runtime.isFeatureInEffect({
-      feature: "JOBS"
-    });
 
     var entityCustomer = false;
     var entityVendor = false;
@@ -68,12 +67,11 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var entityOtherName = false;
 
     var entity_name;
-    var entity_id;
     var entity_nit;
 
     function getInputData() {
       try {
-        log.debug('getInputData:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC + ' FILE ID -' + paramFileID);
+        log.debug('getInputData:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC + ' FILE ID -' + paramFileID + ' ADJUST -' + paramAdjustment);
         ParametrosYFeatures();
         // Obtiene años ya procesados
         var ArrProcessedYears = ObtenerAñosProcesados();
@@ -107,10 +105,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               arrTemporal = AgruparPorCuenta(arrTemporal); //agrupa por cuenta y entity
 
               for (var x = 0; x < arrTemporal.length; x++) {
-                arrTemporal[x][4] = ArrYears[i][1];
-                if (featuresubs) {
-                  arrTemporal[x][5] = paramSubsidy;
-                }
+                arrTemporal[x].push(ArrYears[i][1]);//5
                 ArrData.push(arrTemporal[x]);
               }
             }
@@ -155,13 +150,19 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           columns: ['custrecord_lmry_co_puc_d6_id']
         });
 
-        var digitsPUC = (account_lookup.custrecord_lmry_co_puc_d6_id)[0].text;
+        var puc6d = account_lookup.custrecord_lmry_co_puc_d6_id;
+        if (puc6d.length != 0) {
+          var digitsPUC = puc6d[0].text;
 
-        if (digitsPUC.charAt(0) == paramPUC) {
-          actualizarThirdData(arrTemp, digitsPUC);
+          if (digitsPUC.charAt(0) == paramPUC) {
+            actualizarThirdData(arrTemp, digitsPUC);
+          }
+        } else {
+          log.debug('Alerta en map', 'La cuenta de ID ' + arrTemp[0] + ' no tiene configurado un puc de 6 digitos.');
         }
+
       } catch (err) {
-        //log.error('err', err);
+        log.error('err map', err);
       }
     }
 
@@ -194,14 +195,14 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         var arrSaldoAnterior = new Array();
         if (ArrYears.length != 0) {
           arrSaldoAnterior = obtenerSaldoAnterior(ArrYears[ArrYears.length - 1][1]); //saldos del inicio de los tiempos hasta un año antes al periodo de generación.
-        } else{
-          log.debug('No hay saldo anterior',  'Generación desde el año inicial');
+        } else {
+          log.debug('No hay saldo anterior', 'Generación desde el año inicial');
         }
-        log.debug('arrSaldoAnterior',arrSaldoAnterior);
+        log.debug('arrSaldoAnterior', arrSaldoAnterior);
 
-        if (paramFileID == null || paramFileID == '') {
+        if (paramFileID == null || paramFileID == '') {
           var idfile = savefile(ConvertirAString(arrSaldoAnterior));
-        }else{
+        } else {
           var file = fileModulo.load({
             id: paramFileID
           });
@@ -213,16 +214,16 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         var ArrAllPeriods = ObtenerPeriodos();
         // Obtener periodos que faltarian procesar del mismo año de generación
         var ArrYearPeriods = ObtenerPeriodosDelAño(ArrAllPeriods);
-        log.debug('Periodos faltantes a procesar, para puc '+paramPUC+':',ArrYearPeriods);
+        log.debug('Periodos faltantes a procesar, para puc ' + paramPUC + ':', ArrYearPeriods);
         if (ArrYearPeriods.length != 0) {
-          ArrYearPeriods = ArrYearPeriods.map(function rem(e) {return e[0]});
-          log.debug('ArrYearPeriods total',ArrYearPeriods);
+          ArrYearPeriods = ArrYearPeriods.map(function rem(e) { return e[0] });
+          log.debug('ArrYearPeriods total', ArrYearPeriods);
           ArrYearPeriods = ArrYearPeriods.join(',');
           //ArrYearPeriods = ArrYearPeriods[0] + ',' + ArrYearPeriods[ArrYearPeriods.length - 1];
-        }else{
+        } else {
           ArrYearPeriods = '';
         }
-        llamarSchedule(idfile,ArrYearPeriods);
+        llamarSchedule(idfile, ArrYearPeriods);
 
       } catch (err) {
         log.error('error summarize', err);
@@ -243,22 +244,14 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           value: ArrAllPeriods[i][1],
           type: format.Type.DATE
         }).getMonth();
-        //PARA EL RPT INVENTARIO Y BALANCE 2.0 , LOS PERIODOS RESTANTES SERIAN DESDE INICIO DE AÑO HASTA EL MES DE GENERACION.
-        if (periodIsAdjust) {
-          if (tempYear == periodYearIni && tempMonth <= periodMonthIni && paramPeriod != ArrAllPeriods[i][0]) {
-            var arr = new Array();
-            arr[0] = ArrAllPeriods[i][0];
-            arr[1] = ArrAllPeriods[i][1];
-            ArrReturn.push(arr);
-          }
-        } else {
-          if (tempYear == periodYearIni && tempMonth <= periodMonthIni) {
-            var arr = new Array();
-            arr[0] = ArrAllPeriods[i][0];
-            arr[1] = ArrAllPeriods[i][1];
-            ArrReturn.push(arr);
-          }
+
+        if (tempYear == periodYearIni && tempMonth <= periodMonthIni) {
+          var arr = new Array();
+          arr[0] = ArrAllPeriods[i][0];
+          arr[1] = ArrAllPeriods[i][1];
+          ArrReturn.push(arr);
         }
+
       }
 
       ArrReturn = OrdenarPeriodosPorMes(ArrReturn);
@@ -273,7 +266,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
       var savedsearch = search.load({
         /*LatamReady - CO Inventory and Balance Third Data*/
-        id: 'customsearch_lmry_co_inv_bal'
+        id: 'customsearch_test_co_inv_bal'
       });
 
       var pucFilter = search.createFilter({
@@ -308,6 +301,15 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         savedsearch.filters.push(multibookFilter);
       }
 
+      if (paramAdjustment == 'F') {
+        var adjustFilter = search.createFilter({
+          name: 'custrecord_lmry_co_terceros_adjust',
+          operator: search.Operator.IS,
+          values: false
+        });
+        savedsearch.filters.push(adjustFilter);
+      }
+
       var savedsearchResult = savedsearch.run();
 
       while (!DbolStop) {
@@ -330,7 +332,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               if (objResult[i].getValue(columns[j]) != null && objResult[i].getValue(columns[j]) != '- None -' && objResult[i].getValue(columns[j]) != 'NaN' && objResult[i].getValue(columns[j]) != 'undefined') {
                 if (j != 0) {
                   arrAuxiliar[j] = redondear(objResult[i].getValue(columns[j]));
-                }else{
+                } else {
                   arrAuxiliar[j] = objResult[i].getValue(columns[j]);
                 }
               } else {
@@ -399,18 +401,13 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       }
 
       record.save();
-      log.debug('Se actualizo third processed', 'anio: '+anioProcesado + ' puc: ' + paramPUC);
+      log.debug('Se actualizo third processed', 'anio: ' + anioProcesado + ' puc: ' + paramPUC);
     }
 
     function actualizarThirdData(arrTemp, puc) {
 
       var record = recordModulo.create({
         type: 'customrecord_lmry_co_terceros_data',
-      });
-      // 7. PUC 6
-      record.setValue({
-        fieldId: 'custrecord_lmry_co_terceros_puc6',
-        value: '' + puc
       });
       // 0. Account
       record.setValue({
@@ -452,7 +449,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       // 4. Year
       record.setValue({
         fieldId: 'custrecord_lmry_co_terceros_year',
-        value: arrTemp[4]
+        value: arrTemp[5]
       });
       // 5. Multibook
       if (feamultibook || feamultibook == 'T') {
@@ -468,6 +465,21 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           value: '' + paramSubsidy
         });
       }
+      // 7. PUC 6
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_terceros_puc6',
+        value: '' + puc
+      });
+      // 8. IS adjust
+      var isAdj = false;
+      if (arrTemp[4] != 'F') {
+        isAdj = true;
+      }
+
+      record.setValue({
+        fieldId: 'custrecord_lmry_co_terceros_adjust',
+        value: isAdj
+      });
 
       var id = record.save();
       //log.debug('Se actualizo third data', 'entity: '+JSON.stringify(json_entity));
@@ -643,31 +655,32 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     function ConvertirAString(arrData) {
       var str_return = '';
       for (var i = 0; i < arrData.length; i++) {
-        str_return += arrData[i].join('|')+'\r\n';
+        str_return += arrData[i].join('|') + '\r\n';
       }
-      log.debug('str_return',str_return);
+      log.debug('str_return', str_return);
       return str_return;
     }
 
-    function llamarSchedule(idfile , periodMov) {
+    function llamarSchedule(idfile, periodMov) {
       var params = {};
-      params['custscript_lmry_co_invbalv2_logid'] = paramRecordID;
-      params['custscript_lmry_co_invbalv2_periodo'] = paramPeriod;
-      params['custscript_lmry_co_invbalv2_fileid'] = idfile;
-      params['custscript_lmry_co_invbalv2_puc'] = paramPUC;
-      params['custscript_lmry_co_invbalv2_period_res'] = periodMov;
+      params['custscript_test_co_invbalv2_logid'] = paramRecordID;
+      params['custscript_test_co_invbalv2_periodo'] = paramPeriod;
+      params['custscript_test_co_invbalv2_fileid'] = idfile;
+      params['custscript_test_co_invbalv2_puc'] = paramPUC;
+      params['custscript_test_co_invbalv2_period_res'] = periodMov;
+      params['custscript_test_co_invbalv2_adjust'] = paramAdjustment;
 
       if (featuresubs) {
-        params['custscript_lmry_co_invbalv2_subsi'] = paramSubsidy;
+        params['custscript_test_co_invbalv2_subsi'] = paramSubsidy;
       }
       if (feamultibook) {
-        params['custscript_lmry_co_invbalv2_multibook'] = paramMultibook
+        params['custscript_test_co_invbalv2_multibook'] = paramMultibook
       }
 
       var RedirecSchdl = task.create({
         taskType: task.TaskType.SCHEDULED_SCRIPT,
-        scriptId: 'customscript_lmry_co_inv_bal_v2_schdl',
-        deploymentId: 'customdeploy_lmry_co_inv_bal_v2_schdl',
+        scriptId: 'customscript_test_co_inv_bal_v2_schdl',
+        deploymentId: 'customdeploy_test_co_inv_bal_v2_schdl',
         params: params
       });
       log.debug('llamando a schedule');
@@ -691,23 +704,10 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         });
 
         var idfile = file.save(); // Termina de grabar el archivo
-        var idfile2 = fileModulo.load({
-          id: idfile
-        }); // Trae URL de archivo generado
-
-        // Obtenemo de las prefencias generales el URL de Netsuite (Produccion o Sandbox)
-        var getURL = objContext.getParameter({
-          name: 'custscript_lmry_netsuite_location'
-        });
-        var urlfile = '';
-
-        if (getURL != '' && getURL != '') {
-          urlfile += 'https://' + getURL;
-        }
-
-        urlfile += idfile2.url;
 
         return idfile;
+      }else{
+        log.debug('Alerta en saveFile', 'No se encuentra ID de Folder');
       }
     }
 
@@ -770,6 +770,15 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         ],
         columns: ['internalid', 'startdate']
       });
+
+      if (paramAdjustment == 'F') {
+        var adjustFilter = search.createFilter({
+          name: 'isadjust',
+          operator: search.Operator.IS,
+          values: false
+        });
+        busqueda.filters.push(adjustFilter);
+      }
 
       var savedsearch = busqueda.run();
 
@@ -999,21 +1008,21 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         });
         savedsearch.filters.push(multibookFilter);
 
-        //columan4
+        //columan5
         var columnaDebit = search.createColumn({
           name: 'formulacurrency',
           formula: "{accountingtransaction.debitamount}",
           summary: 'SUM'
         });
         savedsearch.columns.push(columnaDebit);
-        //columna5
+        //columna6
         var columnaCredit = search.createColumn({
           name: 'formulacurrency',
           formula: "{accountingtransaction.creditamount}",
           summary: 'SUM'
         });
         savedsearch.columns.push(columnaCredit);
-        //columna6
+        //columna7
         var columnaActMulti = search.createColumn({
           name: 'account',
           join: 'accountingtransaction',
@@ -1054,19 +1063,19 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             if (feamultibook || feamultibook == 'T') {
               // 0. Account
               if (objResult[i].getValue(columns[6]) != null && objResult[i].getValue(columns[6]) != '- None -' && objResult[i].getValue(columns[6]) != 'NaN' && objResult[i].getValue(columns[6]) != 'undefined') {
-                arr[0] = objResult[i].getValue(columns[6]);
+                arr[0] = objResult[i].getValue(columns[7]);
               } else {
                 arr[0] = '';
               }
               // 1. Debit
               if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -' && objResult[i].getValue(columns[4]) != 'NaN' && objResult[i].getValue(columns[4]) != 'undefined') {
-                arr[1] = objResult[i].getValue(columns[4]);
+                arr[1] = objResult[i].getValue(columns[5]);
               } else {
                 arr[1] = '';
               }
               // 2. Credit
               if (objResult[i].getValue(columns[5]) != null && objResult[i].getValue(columns[5]) != '- None -' && objResult[i].getValue(columns[5]) != 'NaN' && objResult[i].getValue(columns[5]) != 'undefined') {
-                arr[2] = objResult[i].getValue(columns[5]);
+                arr[2] = objResult[i].getValue(columns[6]);
               } else {
                 arr[2] = '';
               }
@@ -1098,6 +1107,12 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             } else {
               arr[3] = '';
             }
+            // 4. IS ADJUST
+            if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '' && objResult[i].getValue(columns[4]) != '- None -') {
+              arr[4] = objResult[i].getValue(columns[4]);
+            } else {
+              arr[4] = '';
+            }
 
             ArrReturn[cont] = arr;
             cont++;
@@ -1121,16 +1136,15 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       if (paramPUC == null) {
         paramPUC = 1;
       }
-      log.debug('parametros:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC);
+      log.debug('parametros:', 'Multibook -' + paramMultibook + ' logID -' + paramRecordID + ' Subsi -' + paramSubsidy + ' periodo -' + paramPeriod + ' PUC -' + paramPUC + ' ADJUST -' + paramAdjustment);
 
       var period_temp = search.lookupFields({
         type: search.Type.ACCOUNTING_PERIOD,
         id: paramPeriod,
-        columns: ['startdate', 'isadjust', 'enddate']
+        columns: ['startdate','enddate']
       });
 
       periodStartDate = period_temp.startdate;
-      periodIsAdjust = period_temp.isadjust;
 
       periodYearIni = format.parse({
         value: periodStartDate,
