@@ -13,7 +13,7 @@
  */
 define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/task", "N/config", "./CO_Library_Mensual/LMRY_CO_Reportes_LBRY_V2.0.js"],
 
-  function (search, log, fileModulo, runtime, format, recordModulo, task, config, libreria) {
+  function(search, log, fileModulo, runtime, format, recordModulo, task, config, libreria) {
 
     /**
      * Input Data for processing
@@ -60,6 +60,9 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
     var feamultibook = runtime.isFeatureInEffect({
       feature: "MULTIBOOK"
     });
+    var featurePeriodEnd = runtime.isFeatureInEffect({
+      feature: "PERIODENDJOURNALENTRIES"
+    });
 
     var entityCustomer = false;
     var entityVendor = false;
@@ -77,9 +80,12 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
         var ArrProcessedYears = ObtenerAñosProcesados();
         // Obtiene los periodos Fiscal Year (desde el inicio hasta un año antes del periodo de generación)
         var ArrYears = ObtenerAñosFiscales();
+        log.debug('ArrYears', ArrYears);
 
         OrdenarAños(ArrYears);
+        log.debug('ArrYears ordenados', ArrYears);
         OrdenarAños(ArrProcessedYears);
+        log.debug('ArrProcessedYears', ArrProcessedYears);
 
         for (var i = 0; i < ArrYears.length; i++) {
           var flag = false;
@@ -98,6 +104,7 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
 
             if (feamultibook) {
               arrTemporalSpecific = ObtenerData(ArrYears[i][0], true); //no filtra por parametro puc
+              log.debug('arrTemporalSpecific', arrTemporalSpecific);
               Array.prototype.push.apply(arrTemporal, arrTemporalSpecific);
             }
 
@@ -105,7 +112,7 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
               arrTemporal = AgruparPorCuenta(arrTemporal); //agrupa por cuenta y entity
 
               for (var x = 0; x < arrTemporal.length; x++) {
-                arrTemporal[x].push(ArrYears[i][1]);//5
+                arrTemporal[x].push(ArrYears[i][1]); //5
                 ArrData.push(arrTemporal[x]);
               }
             }
@@ -151,12 +158,19 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
         });
 
         var puc6d = account_lookup.custrecord_lmry_co_puc_d6_id;
-        if (puc6d.length != 0) {
-          var digitsPUC = puc6d[0].text;
 
-          if (digitsPUC.charAt(0) == paramPUC) {
-            actualizarThirdData(arrTemp, digitsPUC);
+        if (puc6d.length != 0) {
+          var balance = Number(arrTemp[1]) - Number(arrTemp[2]);
+          if (balance != 0) {
+            var digitsPUC = puc6d[0].text;
+
+            if (digitsPUC.charAt(0) == paramPUC) {
+              actualizarThirdData(arrTemp, digitsPUC);
+            }
+          } else {
+            log.debug('Alerta en map - balance es 0', arrTemp);
           }
+
         } else {
           log.debug('Alerta en map', 'La cuenta de ID ' + arrTemp[0] + ' no tiene configurado un puc de 6 digitos.');
         }
@@ -216,7 +230,9 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
         var ArrYearPeriods = ObtenerPeriodosDelAño(ArrAllPeriods);
         log.debug('Periodos faltantes a procesar, para puc ' + paramPUC + ':', ArrYearPeriods);
         if (ArrYearPeriods.length != 0) {
-          ArrYearPeriods = ArrYearPeriods.map(function rem(e) { return e[0] });
+          ArrYearPeriods = ArrYearPeriods.map(function rem(e) {
+            return e[0]
+          });
           log.debug('ArrYearPeriods total', ArrYearPeriods);
           ArrYearPeriods = ArrYearPeriods.join(',');
           //ArrYearPeriods = ArrYearPeriods[0] + ',' + ArrYearPeriods[ArrYearPeriods.length - 1];
@@ -706,7 +722,7 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
         var idfile = file.save(); // Termina de grabar el archivo
 
         return idfile;
-      }else{
+      } else {
         log.debug('Alerta en saveFile', 'No se encuentra ID de Folder');
       }
     }
@@ -948,6 +964,14 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
         id: 'customsearch_lmry_co_bal_comp_terc_data'
       });
 
+      if (featurePeriodEnd) {
+        var confiPeriodEnd = search.createSetting({
+          name: 'includeperiodendtransactions',
+          value: 'TRUE'
+        })
+        savedsearch.settings.push(confiPeriodEnd);
+      }
+
       if (featuresubs) {
         var subsidiaryFilter = search.createFilter({
           name: 'subsidiary',
@@ -965,13 +989,6 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
       savedsearch.filters.push(periodFilter);
 
       if (feamultibook) {
-        var amountFilter = search.createFilter({
-          name: 'formulanumeric',
-          operator: search.Operator.EQUALTO,
-          formula: "CASE WHEN NVL({accountingtransaction.debitamount},0) - NVL({accountingtransaction.creditamount},0) <> 0 THEN 1 ELSE 0 END",
-          values: [1]
-        });
-        savedsearch.filters.push(amountFilter);
 
         if (isSpecific) {
           var specificFilter = search.createFilter({
@@ -1030,16 +1047,6 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
           sort: search.Sort.ASC
         });
         savedsearch.columns.push(columnaActMulti);
-
-      } else {
-
-        var amountFilter = search.createFilter({
-          name: 'formulanumeric',
-          operator: search.Operator.EQUALTO,
-          formula: "CASE WHEN NVL({debitamount},0) - NVL({creditamount},0) <> 0 THEN 1 ELSE 0 END",
-          values: [1]
-        });
-        savedsearch.filters.push(amountFilter);
 
       }
 
@@ -1141,7 +1148,7 @@ define(['N/search', 'N/log', 'N/file', 'N/runtime', "N/format", "N/record", "N/t
       var period_temp = search.lookupFields({
         type: search.Type.ACCOUNTING_PERIOD,
         id: paramPeriod,
-        columns: ['startdate','enddate']
+        columns: ['startdate', 'enddate']
       });
 
       periodStartDate = period_temp.startdate;

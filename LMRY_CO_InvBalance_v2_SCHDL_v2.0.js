@@ -12,10 +12,10 @@
  * @NModuleScope Public
  */
 define(["N/record", "N/runtime", "N/file", "N/encode", "N/search",
-  "N/format", "N/log", "N/config", "./CO_Library_Mensual/LMRY_CO_Reportes_LBRY_V2.0.js", "N/task"
-],
+    "N/format", "N/log", "N/config", "./CO_Library_Mensual/LMRY_CO_Reportes_LBRY_V2.0.js", "N/task"
+  ],
 
-  function (recordModulo, runtime, fileModulo, encode, search, format, log,
+  function(recordModulo, runtime, fileModulo, encode, search, format, log,
     config, libreria, task) {
 
     var objContext = runtime.getCurrentScript();
@@ -55,6 +55,7 @@ define(["N/record", "N/runtime", "N/file", "N/encode", "N/search",
     //Features
     var featSubsi = null;
     var featMulti = null;
+    var featurePeriodEnd = null;
 
     function execute(context) {
       try {
@@ -145,8 +146,17 @@ define(["N/record", "N/runtime", "N/file", "N/encode", "N/search",
       var arrCuatroDigitos = new Array();
 
       var savedsearch = search.load({
-        id: 'customsearch_lmry_co_invent_balanc_PEJ'
+        /*LatamReady - CO Inventory Book and Balance Period End Journal Test*/
+        id: 'customsearch_test_co_invent_balanc_PEJ'
       });
+
+      if (featurePeriodEnd) {
+        var confiPeriodEnd = search.createSetting({
+          name: 'includeperiodendtransactions',
+          value: 'TRUE'
+        })
+        savedsearch.settings.push(confiPeriodEnd);
+      }
 
       var pucFilter = search.createFilter({
         name: 'formulatext',
@@ -772,11 +782,11 @@ define(["N/record", "N/runtime", "N/file", "N/encode", "N/search",
 
       // CAMBIO 2016/04/14 - FILA DIFERENCIA
       // Operacion con las Cuentas de 1 Digito (ACTIVOS + GASTOS - INGRESOS - PASIVO - PATRIMONIO)
-      var montoTotal1Dig = arr1D.reduce(function (contador, e) {
+      var montoTotal1Dig = arr1D.reduce(function(contador, e) {
         return redondear(contador + e[2]);
       }, 0)
       log.debug('montoTotal1Dig', montoTotal1Dig);
-      var montoTotal2Dig = arr2D.reduce(function (contador, e) {
+      var montoTotal2Dig = arr2D.reduce(function(contador, e) {
         return redondear(contador + e[2]);
       }, 0)
       log.debug('montoTotal2Dig', montoTotal2Dig);
@@ -1512,6 +1522,9 @@ define(["N/record", "N/runtime", "N/file", "N/encode", "N/search",
       });
       featMulti = runtime.isFeatureInEffect({
         feature: "MULTIBOOK"
+      });
+      featurePeriodEnd = runtime.isFeatureInEffect({
+        feature: "PERIODENDJOURNALENTRIES"
       });
 
       log.error({
