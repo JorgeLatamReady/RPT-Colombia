@@ -45,13 +45,13 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var paramPeriodFin = objContext.getParameter({
       name: 'custscript_lmry_terceros_mprdc_periodFin'
     });
+    var paramAdjustment = objContext.getParameter({
+      name: 'custscript_lmry_terceros_mprdc_adjust'
+    });
 
     var periodYearIni;
     var periodMonthIni;
-    var periodIniIsAdjust = false;
 
-    var periodYearFin;
-    var periodMonthFin;
     var periodstartdateIni;
     var periodstartdateFin;
 
@@ -61,14 +61,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     var feamultibook = runtime.isFeatureInEffect({
       feature: "MULTIBOOK"
     });
-    var featurejobs = runtime.isFeatureInEffect({
-      feature: "JOBS"
+    var featurePeriodEnd = runtime.isFeatureInEffect({
+      feature: "PERIODENDJOURNALENTRIES"
     });
-
-    var entityCustomer = false;
-    var entityVendor = false;
-    var entityEmployee = false;
-    var entityOtherName = false;
 
     var entity_name;
     var entity_id;
@@ -118,7 +113,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               arrTemporal = AgruparPorCuenta(arrTemporal);
 
               for (var x = 0; x < arrTemporal.length; x++) {
-                arrTemporal[x][4] = ArrYears[i][1];
+                arrTemporal[x].push(ArrYears[i][1]); //5
                 if (featuresubs) {
                   arrTemporal[x][5] = paramSubsidy;
                 }
@@ -135,6 +130,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         // Obtener periodos del año
         var ArrAllPeriods = ObtenerPeriodos();
         var ArrYearPeriods = ObtenerPeriodosDelAño(ArrAllPeriods);
+        log.debug('ArrYearPeriods',ArrYearPeriods);
 
         if (ArrYearPeriods.length != 0) {
           ArrDataRestante = ObtenerData(ArrYearPeriods, false, false, false);
@@ -147,7 +143,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           }
 
         }
-        log.debug('ArrDataRestante getInputData',ArrDataRestante);
+        log.debug('ArrDataRestante getInputData', ArrDataRestante);
         // Obtiene Movimientos
         if (paramPeriodFin != null) {
           ArrDataActual = ObtenerData(paramPeriod, true, false, false, paramPeriodFin);
@@ -192,47 +188,62 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       try {
         var arrTemp = JSON.parse(context.value);
 
-        if (arrTemp[4] == 'movimientos' || arrTemp[4] == 'saldo_anterior') {
-          var json_entity = {};
-          var flag_entity = ObtenerEntidad(arrTemp[3]);
+        var balance = Number(arrTemp[1]) - Number(arrTemp[2]);
 
-          if (flag_entity) {
-            json_entity.name = entity_name;
-            json_entity.nit = entity_nit;
-            json_entity.internalid = arrTemp[3];
+        if (balance != 0) {
+          if (arrTemp[4] == 'movimientos' || arrTemp[4] == 'saldo_anterior') {
+            var json_entity = {};
+            var flag_entity = ObtenerEntidad(arrTemp[3]);
 
-            arrTemp[3] = JSON.stringify(json_entity);
-          } else {
-            arrTemp[3] = '';
-          }
+            if (flag_entity) {
+              json_entity.name = entity_name;
+              json_entity.nit = entity_nit;
+              json_entity.internalid = arrTemp[3];
 
-          context.write({
-            key: context.key,
-            value: {
-              arreglo: arrTemp, //Vector
-              Clase: arrTemp[4]
+              arrTemp[3] = JSON.stringify(json_entity);
+            } else {
+              arrTemp[3] = '';
             }
-          });
+
+            context.write({
+              key: context.key,
+              value: {
+                arreglo: arrTemp, //Vector
+                Clase: arrTemp[4]
+              }
+            });
+
+          } else {
+            /* GUARDADO DE SALDOS EN AÑOS ANTERIORES */
+            if (paramPUC == '' || paramPUC == null) {
+              paramPUC = 1;
+            }
+
+            var account_lookup = search.lookupFields({
+              type: search.Type.ACCOUNT,
+              id: Number(arrTemp[0]),
+              columns: ['custrecord_lmry_co_puc_d6_id']
+            });
+
+            var puc6d = account_lookup.custrecord_lmry_co_puc_d6_id;
+            if (puc6d.length != 0) {
+              var digitsPUC = puc6d[0].text;
+
+              if (digitsPUC.charAt(0) == paramPUC) {
+                actualizarThirdData(arrTemp, digitsPUC);
+              }
+
+            } else {
+              log.debug('Alerta en map', 'La cuenta de ID ' + arrTemp[0] + ' no tiene configurado un puc de 6 digitos.');
+            }
+
+          }
 
         } else {
-
-          if (paramPUC == '' || paramPUC == null) {
-            paramPUC = 1;
-          }
-
-          var account_lookup = search.lookupFields({
-            type: search.Type.ACCOUNT,
-            id: Number(arrTemp[0]),
-            columns: ['custrecord_lmry_co_puc_d6_id']
-          });
-
-          var digitsPUC = (account_lookup.custrecord_lmry_co_puc_d6_id)[0].text;
-
-          if (digitsPUC.charAt(0) == paramPUC) {
-            actualizarThirdData(arrTemp, digitsPUC);
-          }
-
+          log.debug('Alerta en map - balance es 0', arrTemp);
         }
+
+
 
       } catch (err) {
         log.error('err map', err);
@@ -485,7 +496,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           }
 
           if (entity_id != null) {
-            entityCustomer = true;
             return true;
           } else {
             var entity_vendor_temp = search.lookupFields({
@@ -511,7 +521,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             }
 
             if (entity_id != null) {
-              entityVendor = true;
               return true;
             } else {
               var entity_employee_temp = search.lookupFields({
@@ -533,7 +542,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               }
 
               if (entity_id != null) {
-                entityEmployee = true;
                 return true;
               } else {
                 var otherNameRcd = recordModulo.load({
@@ -1024,426 +1032,77 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var ArrReturn = new Array();
       var cont = 0;
 
-      if (paramEntity != null) {
-        if (feamultibook || feamultibook == 'T') {
-          if (featuresubs || featuresubs == 'T') {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_multibook',
-                  operator: search.Operator.IS,
-                  values: [paramMultibook]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_subsi',
-                  operator: search.Operator.IS,
-                  values: [paramSubsidy]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          } else {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_multibook',
-                  operator: search.Operator.IS,
-                  values: [paramMultibook]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          }
-        } else {
-          if (featuresubs || featuresubs == 'T') {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_subsi',
-                  operator: search.Operator.IS,
-                  values: [paramSubsidy]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          } else {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          }
-        }
-      } else {
-        if (featuresubs || featuresubs == 'T') {
-          if (feamultibook || feamultibook == 'T') {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_multibook',
-                  operator: search.Operator.IS,
-                  values: [paramMultibook]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_subsi',
-                  operator: search.Operator.IS,
-                  values: [paramSubsidy]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          } else {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_subsi',
-                  operator: search.Operator.IS,
-                  values: [paramSubsidy]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          }
-        } else {
-          if (feamultibook || feamultibook == 'T') {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_multibook',
-                  operator: search.Operator.IS,
-                  values: [paramMultibook]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          } else {
-            var busqueda = search.create({
-              type: 'customrecord_lmry_co_terceros_data',
-              filters: [
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.GREATERTHANOREQUALTO,
-                  values: [firstYear]
-                }),
-                search.createFilter({
-                  name: 'formulanumeric',
-                  formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
-                  operator: search.Operator.EQUALTO,
-                  values: [1]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_year',
-                  operator: search.Operator.LESSTHANOREQUALTO,
-                  values: [lastYear]
-                }),
-                search.createFilter({
-                  name: 'custrecord_lmry_co_terceros_puc6',
-                  operator: search.Operator.STARTSWITH,
-                  values: [paramPUC]
-                })
-              ],
-              columns: [
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_account',
-                  summary: 'GROUP',
-                  sort: search.Sort.ASC
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_debit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_credit',
-                  summary: 'SUM'
-                }),
-                search.createColumn({
-                  name: 'custrecord_lmry_co_terceros_entity',
-                  summary: 'GROUP'
-                })
-              ]
-            });
-          }
-        }
+      var busqueda = search.create({
+        type: 'customrecord_lmry_co_terceros_data',
+        filters: [
+          search.createFilter({
+            name: 'custrecord_lmry_co_terceros_year',
+            operator: search.Operator.GREATERTHANOREQUALTO,
+            values: [firstYear]
+          }),
+          search.createFilter({
+            name: 'custrecord_lmry_co_terceros_year',
+            operator: search.Operator.LESSTHANOREQUALTO,
+            values: [lastYear]
+          }),
+          search.createFilter({
+            name: 'formulanumeric',
+            formula: 'CASE WHEN {custrecord_lmry_co_terceros_debit} - {custrecord_lmry_co_terceros_credit} <> 0 THEN 1 ELSE 0 END',
+            operator: search.Operator.EQUALTO,
+            values: [1]
+          }),
+          search.createFilter({
+            name: 'custrecord_lmry_co_terceros_puc6',
+            operator: search.Operator.STARTSWITH,
+            values: [paramPUC]
+          })
+        ],
+        columns: [
+          search.createColumn({
+            name: 'custrecord_lmry_co_terceros_account',
+            summary: 'GROUP',
+            sort: search.Sort.ASC
+          }),
+          search.createColumn({
+            name: 'custrecord_lmry_co_terceros_debit',
+            summary: 'SUM'
+          }),
+          search.createColumn({
+            name: 'custrecord_lmry_co_terceros_credit',
+            summary: 'SUM'
+          }),
+          search.createColumn({
+            name: 'custrecord_lmry_co_terceros_entity',
+            summary: 'GROUP'
+          })
+        ]
+      });
+
+      if (feamultibook || feamultibook == 'T') {
+        var multibookFilter = search.createFilter({
+          name: 'custrecord_lmry_co_terceros_multibook',
+          operator: search.Operator.IS,
+          values: [paramMultibook]
+        });
+        busqueda.filters.push(multibookFilter);
+      }
+
+      if (featuresubs || featuresubs == 'T') {
+        var subsidiaryFilter = search.createFilter({
+          name: 'custrecord_lmry_co_terceros_subsi',
+          operator: search.Operator.IS,
+          values: [paramSubsidy]
+        });
+        busqueda.filters.push(subsidiaryFilter);
+      }
+
+      if (paramAdjustment == 'F') {
+        var adjustFilter = search.createFilter({
+          name: 'custrecord_lmry_co_terceros_adjust',
+          operator: search.Operator.IS,
+          values: false
+        });
+        busqueda.filters.push(adjustFilter);
       }
 
       var savedsearch = busqueda.run();
@@ -1459,30 +1118,25 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
           for (var i = 0; i < objResult.length; i++) {
             var columns = objResult[i].columns;
-
             var arrAuxiliar = new Array();
-
             // 0. Account
             if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN' && objResult[i].getValue(columns[0]) != 'undefined') {
               arrAuxiliar[0] = objResult[i].getValue(columns[0]);
             } else {
               arrAuxiliar[0] = '';
             }
-
             // 1. Debit
             if (objResult[i].getValue(columns[1]) != null && objResult[i].getValue(columns[1]) != '- None -' && objResult[i].getValue(columns[1]) != 'NaN' && objResult[i].getValue(columns[1]) != 'undefined') {
               arrAuxiliar[1] = objResult[i].getValue(columns[1]);
             } else {
               arrAuxiliar[1] = '';
             }
-
             // 2. Credit
             if (objResult[i].getValue(columns[2]) != null && objResult[i].getValue(columns[2]) != '- None -' && objResult[i].getValue(columns[2]) != 'NaN' && objResult[i].getValue(columns[2]) != 'undefined') {
               arrAuxiliar[2] = objResult[i].getValue(columns[2]);
             } else {
               arrAuxiliar[2] = '';
             }
-
             // 3. Entity
             if (objResult[i].getValue(columns[3]) != null && objResult[i].getValue(columns[3]) != '- None -' && objResult[i].getValue(columns[3]) != 'NaN' && objResult[i].getValue(columns[3]) != 'undefined') {
               arrAuxiliar[3] = objResult[i].getValue(columns[3]);
@@ -1532,31 +1186,16 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           type: format.Type.DATE
         }).getMonth();
 
-        if (periodIniIsAdjust) {
-          if (tempYear == periodYearIni && tempMonth <= periodMonthIni && paramPeriod != ArrAllPeriods[i][0]) {
-            var arr = new Array();
-
-            arr[0] = ArrAllPeriods[i][0];
-
-            arr[1] = ArrAllPeriods[i][1];
-
-            ArrReturn.push(arr);
-          }
-        } else {
-          if (tempYear == periodYearIni && tempMonth < periodMonthIni) {
-            var arr = new Array();
-
-            arr[0] = ArrAllPeriods[i][0];
-
-            arr[1] = ArrAllPeriods[i][1];
-
-            ArrReturn.push(arr);
-          }
+        if (tempYear == periodYearIni && tempMonth < periodMonthIni) {
+          var arr = new Array();
+          arr[0] = ArrAllPeriods[i][0];
+          arr[1] = ArrAllPeriods[i][1];
+          ArrReturn.push(arr);
         }
+
       }
 
       ArrReturn = OrdenarPeriodosPorMes(ArrReturn);
-
       return ArrReturn;
     }
 
@@ -1601,11 +1240,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var busqueda = search.create({
         type: search.Type.ACCOUNTING_PERIOD,
         filters: [
-          // search.createFilter({
-          //     name : 'isadjust',
-          //     operator: search.Operator.IS,
-          //     values: ['F']
-          // }),
           search.createFilter({
             name: 'isquarter',
             operator: search.Operator.IS,
@@ -1624,6 +1258,15 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         ],
         columns: ['internalid', 'startdate']
       });
+
+      if (paramAdjustment == 'F') {
+        var adjustFilter = search.createFilter({
+          name: 'isadjust',
+          operator: search.Operator.IS,
+          values: false
+        });
+        busqueda.filters.push(adjustFilter);
+      }
 
       var savedsearch = busqueda.run();
 
@@ -1813,8 +1456,29 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var cont = 0;
 
       var savedsearch = search.load({
+        /*LatamReady - CO Balance Comp Terceros Data*/
         id: 'customsearch_lmry_co_bal_comp_terc_data'
       });
+
+      if (paramAdjustment == 'F') {
+        if (isForRecord && type) {//solo para transacciones de movimientos (periodo inicio hasta final)
+          var adjustFilter = search.createFilter({
+            name: 'isadjust',
+            join: 'accountingperiod',
+            operator: search.Operator.IS,
+            values: false
+          });
+          savedsearch.filters.push(adjustFilter);
+        }
+      }
+
+      if (featurePeriodEnd) {
+        var confiPeriodEnd = search.createSetting({
+          name: 'includeperiodendtransactions',
+          value: 'TRUE'
+        })
+        savedsearch.settings.push(confiPeriodEnd);
+      }
 
       if (featuresubs) {
         var subsidiaryFilter = search.createFilter({
@@ -1840,24 +1504,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
           savedsearch.filters.push(entityFilter);
         }
-      }
-
-      if (feamultibook) {
-        var amountFilter = search.createFilter({
-          name: 'formulanumeric',
-          operator: search.Operator.EQUALTO,
-          formula: "CASE WHEN NVL({accountingtransaction.debitamount},0) - NVL({accountingtransaction.creditamount},0) <> 0 THEN 1 ELSE 0 END",
-          values: [1]
-        });
-        savedsearch.filters.push(amountFilter);
-      } else {
-        var amountFilter = search.createFilter({
-          name: 'formulanumeric',
-          operator: search.Operator.EQUALTO,
-          formula: "CASE WHEN NVL({debitamount},0) - NVL({creditamount},0) <> 0 THEN 1 ELSE 0 END",
-          values: [1]
-        });
-        savedsearch.filters.push(amountFilter);
       }
 
       if (type) {
@@ -1969,13 +1615,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           sort: search.Sort.ASC
         });
         savedsearch.columns.push(columnaActMulti);
-        //columna 7
-        // var pucColumn = search.createColumn({
-        //     name: 'custrecord_lmry_co_puc_d6_id',
-        //     join: 'account',
-        //     summary: 'GROUP'
-        // });
-        // savedsearch.columns.push(pucColumn);
       }
 
       var searchresult = savedsearch.run();
@@ -1993,7 +1632,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
           for (var i = 0; i < intLength; i++) {
             var columns = objResult[i].columns;
-
             var arr = new Array();
 
             if (feamultibook || feamultibook == 'T') {
@@ -2044,10 +1682,14 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               arr[3] = '';
             }
 
-            if (!isForRecord && type) {
-              arr[4] = 'movimientos';
+            if (isForRecord) {
+              arr[4] = objResult[i].getValue(columns[4]); //True: si es en adjust, False: no es en adjust
             } else {
-              arr[4] = 'saldo_anterior';//de periodos restantes
+              if (type) {
+                arr[4] = 'movimientos'; //desde periodo inicial hasta final
+              } else {
+                arr[4] = 'saldo_anterior'; //de periodos restantes
+              }
             }
 
             if (paramEntity != null) {
@@ -2088,12 +1730,10 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var period_temp = search.lookupFields({
         type: search.Type.ACCOUNTING_PERIOD,
         id: paramPeriod,
-        columns: ['startdate', 'isadjust']
+        columns: ['startdate']
       });
 
       periodstartdateIni = period_temp.startdate;
-
-      periodIniIsAdjust = period_temp.isadjust;
 
       periodYearIni = format.parse({
         value: periodstartdateIni,
@@ -2113,16 +1753,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         });
 
         periodstartdateFin = period_temp_2.startdate;
-
-        periodYearFin = format.parse({
-          value: periodstartdateFin,
-          type: format.Type.DATE
-        }).getFullYear();
-
-        periodMonthFin = format.parse({
-          value: periodstartdateFin,
-          type: format.Type.DATE
-        }).getMonth();
       }
 
     }
