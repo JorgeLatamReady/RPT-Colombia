@@ -51,8 +51,11 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
     var periodYearIni;
     var periodMonthIni;
+    var periodYearFin;
+    var periodMonthFin;
 
     var periodstartdateIni;
+    var periodenddateIni;
     var periodstartdateFin;
 
     var featuresubs = runtime.isFeatureInEffect({
@@ -102,10 +105,10 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           if (!flag) {
             var arrTemporal = new Array();
             var arrTemporalSpecific = new Array();
-            arrTemporal = ObtenerData(ArrYears[i][0], true, false, true);
+            arrTemporal = ObtenerData(ArrYears[i][0], "saldo_anterior", false, true);
             //Obtiene Specific Transactions
             if (feamultibook) {
-              arrTemporalSpecific = ObtenerData(ArrYears[i][0], true, true, true);
+              arrTemporalSpecific = ObtenerData(ArrYears[i][0], "saldo_anterior", true, true);
               Array.prototype.push.apply(arrTemporal, arrTemporalSpecific);
             }
 
@@ -113,9 +116,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               arrTemporal = AgruparPorCuenta(arrTemporal);
 
               for (var x = 0; x < arrTemporal.length; x++) {
-                arrTemporal[x].push(ArrYears[i][1]); //5
+                arrTemporal[x].push(ArrYears[i][1]);//5
                 if (featuresubs) {
-                  arrTemporal[x][5] = paramSubsidy;
+                  arrTemporal[x].push(paramSubsidy);//6
                 }
                 ArrData.push(arrTemporal[x]);
               }
@@ -133,9 +136,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         log.debug('ArrYearPeriods',ArrYearPeriods);
 
         if (ArrYearPeriods.length != 0) {
-          ArrDataRestante = ObtenerData(ArrYearPeriods, false, false, false);
+          ArrDataRestante = ObtenerData(ArrYearPeriods, "saldo_restante", false, false);
           if (feamultibook) {
-            var ArrDataRestanteSpecific = ObtenerData(ArrYearPeriods, false, true, false);
+            var ArrDataRestanteSpecific = ObtenerData(ArrYearPeriods, "saldo_restante", true, false);
 
             if (ArrDataRestanteSpecific.length != 0) {
               Array.prototype.push.apply(ArrDataRestante, ArrDataRestanteSpecific);
@@ -146,16 +149,16 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         log.debug('ArrDataRestante getInputData', ArrDataRestante);
         // Obtiene Movimientos
         if (paramPeriodFin != null) {
-          ArrDataActual = ObtenerData(paramPeriod, true, false, false, paramPeriodFin);
+          ArrDataActual = ObtenerData(paramPeriod, "movimientos", false, false, paramPeriodFin);
         } else {
-          ArrDataActual = ObtenerData(paramPeriod, true, false, false);
+          ArrDataActual = ObtenerData(paramPeriod, "movimientos", false, false);
         }
 
         if (feamultibook) {
           if (paramPeriodFin != null) {
-            var ArrDataAcualSpecific = ObtenerData(paramPeriod, true, true, false, paramPeriodFin);
+            var ArrDataAcualSpecific = ObtenerData(paramPeriod, "movimientos", true, false, paramPeriodFin);
           } else {
-            var ArrDataAcualSpecific = ObtenerData(paramPeriod, true, true, false);
+            var ArrDataAcualSpecific = ObtenerData(paramPeriod, "movimientos", true, false);
           }
 
           if (ArrDataAcualSpecific.length != 0) {
@@ -187,11 +190,11 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     function map(context) {
       try {
         var arrTemp = JSON.parse(context.value);
-
+        log.debug('arrTemp map',arrTemp);
         var balance = Number(arrTemp[1]) - Number(arrTemp[2]);
 
         if (balance != 0) {
-          if (arrTemp[4] == 'movimientos' || arrTemp[4] == 'saldo_anterior') {
+          if (arrTemp[4] == 'movimientos' || arrTemp[4] == 'saldo_restante') {
             var json_entity = {};
             var flag_entity = ObtenerEntidad(arrTemp[3]);
 
@@ -424,7 +427,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       // 4. Year
       record.setValue({
         fieldId: 'custrecord_lmry_co_terceros_year',
-        value: arrTemp[4]
+        value: arrTemp[5]
       });
       // 5. Multibook
       if (feamultibook || feamultibook == 'T') {
@@ -629,6 +632,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       params['custscript_lmry_co_terce_schdl_period'] = paramPeriod;
       params['custscript_lmry_co_terce_schdl_fileid'] = idfile;
       params['custscript_lmry_co_terce_schdl_lastpuc'] = paramPUC;
+      params['custscript_lmry_co_terce_schdl_adjust'] = paramAdjustment;
 
       if (featuresubs) {
         params['custscript_lmry_co_terce_schdl_subsi'] = paramSubsidy;
@@ -1461,7 +1465,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       });
 
       if (paramAdjustment == 'F') {
-        if (isForRecord && type) {//solo para transacciones de movimientos (periodo inicio hasta final)
+        if (type != "saldo_anterior") {//solo para transacciones de movimientos y periodos restantes
           var adjustFilter = search.createFilter({
             name: 'isadjust',
             join: 'accountingperiod',
@@ -1506,46 +1510,18 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         }
       }
 
-      if (type) {
-        // Movimientos
-        if (paramPeriodFin != null) {
-          var periodoInicioDate = format.format({
-            value: periodstartdateIni,
-            type: format.Type.DATE
-          });
+      if (type == 'saldo_anterior') {//saldo de años pasados al periodo inicial de generacion
 
-          var periodoFinDate = format.format({
-            value: periodstartdateFin,
-            type: format.Type.DATE
-          });
+        var periodFilter = search.createFilter({
+          name: 'postingperiod',
+          operator: search.Operator.IS,
+          values: [periodYearIniID]
+        });
+        savedsearch.filters.push(periodFilter);
 
-          var periodFilterIni = search.createFilter({
-            name: 'startdate',
-            join: 'accountingperiod',
-            operator: search.Operator.ONORAFTER,
-            values: [periodoInicioDate]
-          });
-          savedsearch.filters.push(periodFilterIni);
+      } else if (type == 'saldo_restante') {//saldo de periodos anterios al periodo inicial de generacion pero del mismo año
 
-          var periodFilterFin = search.createFilter({
-            name: 'startdate',
-            join: 'accountingperiod',
-            operator: search.Operator.ONORBEFORE,
-            values: [periodoFinDate]
-          });
-          savedsearch.filters.push(periodFilterFin);
-        } else {
-          var periodFilter = search.createFilter({
-            name: 'postingperiod',
-            operator: search.Operator.IS,
-            values: [periodYearIniID]
-          });
-          savedsearch.filters.push(periodFilter);
-        }
-      } else {
-        //Saldo Anterior (De periodos restantes del mismo año antes del periodo inicial escogido)
         var arrTemp = new Array();
-
         for (var i = 0; i < periodYearIniID.length; i++) {
           arrTemp[i] = periodYearIniID[i][0];
         }
@@ -1556,6 +1532,42 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           values: [arrTemp]
         });
         savedsearch.filters.push(periodFilter);
+
+      } else {/*MOVIMIENTOS*/ //saldo desde el periodo de inicio hasta el periodo final
+
+        var periodoInicioDate = format.format({
+          value: periodstartdateIni,
+          type: format.Type.DATE
+        });
+
+        var finDate = null;
+
+        if (paramPeriodFin != null) {
+          finDate = periodstartdateFin;
+        } else {
+          finDate = periodenddateIni;
+        }
+
+        var periodoFinDate = format.format({
+          value: finDate,
+          type: format.Type.DATE
+        });
+
+        var periodFilterIni = search.createFilter({
+          name: 'startdate',
+          join: 'accountingperiod',
+          operator: search.Operator.ONORAFTER,
+          values: [periodoInicioDate]
+        });
+        savedsearch.filters.push(periodFilterIni);
+
+        var periodFilterFin = search.createFilter({
+          name: 'startdate',
+          join: 'accountingperiod',
+          operator: search.Operator.ONORBEFORE,
+          values: [periodoFinDate]
+        });
+        savedsearch.filters.push(periodFilterFin);
       }
 
       if (feamultibook) {
@@ -1593,21 +1605,21 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         });
         savedsearch.filters.push(multibookFilter);
 
-        //columan4
+        //columan5
         var columnaDebit = search.createColumn({
           name: 'formulacurrency',
           formula: "{accountingtransaction.debitamount}",
           summary: 'SUM'
         });
         savedsearch.columns.push(columnaDebit);
-        //columna5
+        //columna6
         var columnaCredit = search.createColumn({
           name: 'formulacurrency',
           formula: "{accountingtransaction.creditamount}",
           summary: 'SUM'
         });
         savedsearch.columns.push(columnaCredit);
-        //columna6
+        //columna7
         var columnaActMulti = search.createColumn({
           name: 'account',
           join: 'accountingtransaction',
@@ -1636,20 +1648,20 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
             if (feamultibook || feamultibook == 'T') {
               // 0. Account
-              if (objResult[i].getValue(columns[6]) != null && objResult[i].getValue(columns[6]) != '- None -' && objResult[i].getValue(columns[6]) != 'NaN' && objResult[i].getValue(columns[6]) != 'undefined') {
-                arr[0] = objResult[i].getValue(columns[6]);
+              if (objResult[i].getValue(columns[7]) != null && objResult[i].getValue(columns[7]) != '- None -' && objResult[i].getValue(columns[7]) != 'NaN' && objResult[i].getValue(columns[7]) != 'undefined') {
+                arr[0] = objResult[i].getValue(columns[7]);
               } else {
                 arr[0] = '';
               }
               // 1. Debit
-              if (objResult[i].getValue(columns[4]) != null && objResult[i].getValue(columns[4]) != '- None -' && objResult[i].getValue(columns[4]) != 'NaN' && objResult[i].getValue(columns[4]) != 'undefined') {
-                arr[1] = objResult[i].getValue(columns[4]);
+              if (objResult[i].getValue(columns[5]) != null && objResult[i].getValue(columns[5]) != '- None -' && objResult[i].getValue(columns[5]) != 'NaN' && objResult[i].getValue(columns[5]) != 'undefined') {
+                arr[1] = objResult[i].getValue(columns[5]);
               } else {
                 arr[1] = '';
               }
               // 2. Credit
-              if (objResult[i].getValue(columns[5]) != null && objResult[i].getValue(columns[5]) != '- None -' && objResult[i].getValue(columns[5]) != 'NaN' && objResult[i].getValue(columns[5]) != 'undefined') {
-                arr[2] = objResult[i].getValue(columns[5]);
+              if (objResult[i].getValue(columns[6]) != null && objResult[i].getValue(columns[6]) != '- None -' && objResult[i].getValue(columns[6]) != 'NaN' && objResult[i].getValue(columns[6]) != 'undefined') {
+                arr[2] = objResult[i].getValue(columns[6]);
               } else {
                 arr[2] = '';
               }
@@ -1686,9 +1698,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               arr[4] = objResult[i].getValue(columns[4]); //True: si es en adjust, False: no es en adjust
             } else {
               if (type) {
-                arr[4] = 'movimientos'; //desde periodo inicial hasta final
+                arr[4] = type; //desde periodo inicial hasta final
               } else {
-                arr[4] = 'saldo_anterior'; //de periodos restantes
+                arr[4] = type; //de periodos restantes
               }
             }
 
@@ -1726,14 +1738,15 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       if (paramPUC == null) {
         paramPUC = 1;
       }
-      //log.debug('parametros:',' entity -'+paramEntity+' Multibook -'+paramMultibook+' recorID -'+paramRecordID+' Subsi -'+paramSubsidy+' periodo -'+paramPeriod+' PUC -'+paramPUC+' periodFIn -'+paramPeriodFin);
+      log.debug('parametros:',' entity -'+paramEntity+' Multibook -'+paramMultibook+' recorID -'+paramRecordID+' Subsi -'+paramSubsidy+' periodo -'+paramPeriod+' PUC -'+paramPUC+' periodFIn -'+paramPeriodFin+' adjustment -'+paramAdjustment);
       var period_temp = search.lookupFields({
         type: search.Type.ACCOUNTING_PERIOD,
         id: paramPeriod,
-        columns: ['startdate']
+        columns: ['startdate', 'enddate']
       });
 
       periodstartdateIni = period_temp.startdate;
+      periodenddateIni = period_temp.enddate;
 
       periodYearIni = format.parse({
         value: periodstartdateIni,
@@ -1753,6 +1766,16 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         });
 
         periodstartdateFin = period_temp_2.startdate;
+
+        periodYearFin = format.parse({
+          value: periodstartdateFin,
+          type: format.Type.DATE
+        }).getFullYear();
+
+        periodMonthFin = format.parse({
+          value: periodstartdateFin,
+          type: format.Type.DATE
+        }).getMonth();
       }
 
     }
