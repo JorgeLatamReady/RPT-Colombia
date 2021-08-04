@@ -51,8 +51,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
     var periodYearIni;
     var periodMonthIni;
-    var periodYearFin;
-    var periodMonthFin;
 
     var periodstartdateIni;
     var periodenddateIni;
@@ -86,7 +84,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         var ArrYears = ObtenerAñosFiscales();
 
         OrdenarAños(ArrYears);
+        log.debug('ArrYears',ArrYears);
         OrdenarAños(ArrProcessedYears);
+        log.debug('ArrProcessedYears',ArrProcessedYears);
 
         if (paramEntity != null) {
           ObtenerEntidad(paramEntity);
@@ -147,7 +147,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
         }
         log.debug('ArrDataRestante getInputData', ArrDataRestante);
-        // Obtiene Movimientos
+        /************************** Obtiene Movimientos *************************************/
         if (paramPeriodFin != null) {
           ArrDataActual = ObtenerData(paramPeriod, "movimientos", false, false, paramPeriodFin);
         } else {
@@ -165,6 +165,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             Array.prototype.push.apply(ArrDataActual, ArrDataAcualSpecific);
           }
         }
+        log.debug('ArrDataActual getInputData movimientos', ArrDataActual);
 
         return ArrData.concat(ArrDataRestante, ArrDataActual);
 
@@ -190,7 +191,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     function map(context) {
       try {
         var arrTemp = JSON.parse(context.value);
-        log.debug('arrTemp map',arrTemp);
+        //log.debug('arrTemp map',arrTemp);
         var balance = Number(arrTemp[1]) - Number(arrTemp[2]);
 
         if (balance != 0) {
@@ -208,11 +209,13 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               arrTemp[3] = '';
             }
 
+            var typeData = arrTemp.pop();
+
             context.write({
               key: context.key,
               value: {
                 arreglo: arrTemp, //Vector
-                Clase: arrTemp[4]
+                Clase: typeData
               }
             });
 
@@ -244,9 +247,9 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
 
         } else {
           log.debug('Alerta en map - balance es 0', arrTemp);
+          //log.debug('Number(arrTemp[1])', Number(arrTemp[1]));
+          //log.debug('Number(arrTemp[2])', Number(arrTemp[2]));
         }
-
-
 
       } catch (err) {
         log.error('err map', err);
@@ -275,7 +278,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       try {
         log.debug('summarize', 'summarize');
         ParametrosYFeatures();
-
+        var ArrData = new Array();
         // Obtiene los periodos Fiscal Year
         var ArrYears = ObtenerAñosFiscales();
         OrdenarAños(ArrYears);
@@ -299,30 +302,28 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
           var clase = obj.Clase;
           if (clase == 'movimientos') {
             arrDataMovimientos.push(obj.arreglo);
-          } else if (clase == 'saldo_anterior') {
+          } else if (clase == 'saldo_restante') {
             arrDataRestante.push(obj.arreglo);
           }
           return true;
         });
         log.debug('arrDataRestante', arrDataRestante);
         log.debug('arrDataMovimientos', arrDataMovimientos);
-
-        // Obtiene data de los periodos restantes
+        //Agrupa data de los periodos restantes (que se incluyen dentro del saldo anterior)
         if (arrDataRestante.length != 0) {
           arrDataRestante = AgruparPorCuenta(arrDataRestante);
         }
-        //TODO EL SALDO ANTERIOR
-        ArrData = JuntarYAgruparArreglos(ArrData, arrDataRestante); //ArrData es Saldo Anterior
-
-        // Obtiene Movimientos
+        //JUNTA SALDO ANTERIOR : De años pasados y periodos restantes
+        ArrData = JuntarYAgruparArreglos(ArrData, arrDataRestante);
+        //Agrupa data de Movimientos
         if (arrDataMovimientos.length != 0) {
           arrDataMovimientos = AgruparPorCuenta(arrDataMovimientos);
         }
 
         ArrData = ObtenerArregloFinalSeisDigitos(ArrData, arrDataMovimientos);
         ArrData_str = ConvertirAString(ArrData);
-        var idfile = savefile(ArrData_str);
 
+        var idfile = savefile(ArrData_str);
         LanzarSchedule(idfile);
 
       } catch (err) {
@@ -1287,11 +1288,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             var columns = objResult[i].columns;
             var arrAuxiliar = new Array();
             // 0. Internal ID
-            if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN' && objResult[i].getValue(columns[0]) != 'undefined') {
-              arrAuxiliar[0] = objResult[i].getValue(columns[0]);
-            } else {
-              arrAuxiliar[0] = '';
-            }
+            arrAuxiliar[0] = objResult[i].getValue(columns[0]);
             // 1. Start Date
             if (objResult[i].getValue(columns[1]) != null && objResult[i].getValue(columns[1]) != '- None -' && objResult[i].getValue(columns[1]) != 'NaN' && objResult[i].getValue(columns[1]) != 'undefined') {
               arrAuxiliar[1] = objResult[i].getValue(columns[1]);
@@ -1339,54 +1336,32 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
       var intDMinReg = 0;
       var intDMaxReg = 1000;
       var DbolStop = false;
-
       var ArrReturn = new Array();
-      var cont = 0;
 
-      if (feamultibook) {
-        if (featuresubs) {
-          var busqueda = search.create({
-            type: 'customrecord_lmry_co_terceros_procesados',
-            filters: [
-              ['isinactive', 'is', 'F'],
-              'AND',
-              ['custrecord_lmry_co_multibook_procesado', 'is', paramMultibook],
-              'AND',
-              ['custrecord_lmry_co_subsi_procesado', 'is', paramSubsidy]
-            ],
-            columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
-          });
-        } else {
-          var busqueda = search.create({
-            type: 'customrecord_lmry_co_terceros_procesados',
-            filters: [
-              ['isinactive', 'is', 'F'],
-              'AND',
-              ['custrecord_lmry_co_multibook_procesado', 'is', paramMultibook]
-            ],
-            columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
-          });
-        }
-      } else {
-        if (featuresubs) {
-          var busqueda = search.create({
-            type: 'customrecord_lmry_co_terceros_procesados',
-            filters: [
-              ['isinactive', 'is', 'F'],
-              'AND',
-              ['custrecord_lmry_co_subsi_procesado', 'is', paramSubsidy]
-            ],
-            columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
-          });
-        } else {
-          var busqueda = search.create({
-            type: 'customrecord_lmry_co_terceros_procesados',
-            filters: [
-              ['isinactive', 'is', 'F']
-            ],
-            columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
-          });
-        }
+      var busqueda = search.create({
+        type: 'customrecord_lmry_co_terceros_procesados',
+        filters: [
+          ['isinactive', 'is', 'F']
+        ],
+        columns: ['internalid', 'custrecord_lmry_co_year_procesado', 'custrecord_lmry_co_multibook_procesado', 'custrecord_lmry_co_subsi_procesado', 'custrecord_lmry_co_puc_procesado']
+      });
+
+      if (feamultibook || feamultibook == 'T') {
+        var multibookFilter = search.createFilter({
+          name: 'custrecord_lmry_co_multibook_procesado',
+          operator: search.Operator.IS,
+          values: [paramMultibook]
+        });
+        busqueda.filters.push(multibookFilter);
+      }
+
+      if (featuresubs || featuresubs == 'T') {
+        var subsidiaryFilter = search.createFilter({
+          name: 'custrecord_lmry_co_subsi_procesado',
+          operator: search.Operator.IS,
+          values: [paramSubsidy]
+        });
+        busqueda.filters.push(subsidiaryFilter);
       }
 
       var savedsearch = busqueda.run();
@@ -1404,11 +1379,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             var columns = objResult[i].columns;
             var arrAuxiliar = new Array();
             // 0. Internal ID
-            if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '- None -' && objResult[i].getValue(columns[0]) != 'NaN' && objResult[i].getValue(columns[0]) != 'undefined') {
-              arrAuxiliar[0] = objResult[i].getValue(columns[0]);
-            } else {
-              arrAuxiliar[0] = '';
-            }
+            arrAuxiliar[0] = objResult[i].getValue(columns[0]);
             // 1. Año
             if (objResult[i].getValue(columns[1]) != null && objResult[i].getValue(columns[1]) != '- None -' && objResult[i].getValue(columns[1]) != 'NaN' && objResult[i].getValue(columns[1]) != 'undefined') {
               arrAuxiliar[1] = objResult[i].getValue(columns[1]);
@@ -1434,8 +1405,7 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
               arrAuxiliar[4] = '';
             }
 
-            ArrReturn[cont] = arrAuxiliar;
-            cont++;
+            ArrReturn.push(arrAuxiliar);
           }
 
           if (!DbolStop) {
@@ -1454,10 +1424,8 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
     function ObtenerData(periodYearIniID, type, isSpecific, isForRecord, paramPeriodFin) {
       var intDMinReg = 0;
       var intDMaxReg = 1000;
-
       var DbolStop = false;
       var ArrReturn = new Array();
-      var cont = 0;
 
       var savedsearch = search.load({
         /*LatamReady - CO Balance Comp Terceros Data*/
@@ -1697,26 +1665,19 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
             if (isForRecord) {
               arr[4] = objResult[i].getValue(columns[4]); //True: si es en adjust, False: no es en adjust
             } else {
-              if (type) {
-                arr[4] = type; //desde periodo inicial hasta final
-              } else {
-                arr[4] = type; //de periodos restantes
-              }
+              arr[4] = type; //"saldo_restante" o "movimientos"
             }
 
             if (paramEntity != null) {
               if (!isForRecord) {
                 if (paramEntity == arr[3]) {
-                  ArrReturn[cont] = arr;
-                  cont++;
+                  ArrReturn.push(arr);
                 }
               } else {
-                ArrReturn[cont] = arr;
-                cont++;
+                ArrReturn.push(arr);
               }
             } else {
-              ArrReturn[cont] = arr;
-              cont++;
+              ArrReturn.push(arr);
             }
           }
 
@@ -1766,16 +1727,6 @@ define(['N/search', 'N/log', 'require', 'N/file', 'N/runtime', 'N/query', "N/for
         });
 
         periodstartdateFin = period_temp_2.startdate;
-
-        periodYearFin = format.parse({
-          value: periodstartdateFin,
-          type: format.Type.DATE
-        }).getFullYear();
-
-        periodMonthFin = format.parse({
-          value: periodstartdateFin,
-          type: format.Type.DATE
-        }).getMonth();
       }
 
     }

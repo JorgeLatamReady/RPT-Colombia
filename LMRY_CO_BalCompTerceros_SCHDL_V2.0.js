@@ -32,6 +32,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/search",
     var paramStep = null;
     var paramLastPuc = null;
     var paramPeriodFin = null;
+    var paramAdjustment = null;
 
     var featureMultibook = false;
     var featureSubdidiary = false;
@@ -63,8 +64,8 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/search",
     function execute(context) {
       try {
         ObtenerParametros();
-
         ObtenerDatosSubsidiaria();
+
         if (paramStep == 0) {
           ArrAccounts = ObtenerCuentas();
 
@@ -76,12 +77,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/search",
 
           if (ArrData.length != 0) {
             ArrData = CambiarDataCuenta(ArrData);
-
             paramFileID = saveTemporal(ArrData, 'DATA_CON_CUENTAS_PUC.txt');
-
             paramStep++;
-
             LlamarSchedule();
+
           } else {
             NoData();
 
@@ -97,7 +96,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/search",
         } else if (paramStep == 1) {
           if (paramFileID != null) {
             var strFile = ObtenerFile();
-
             ArrData = ConvertToArray(strFile);
           }
 
@@ -112,43 +110,34 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/search",
           }
 
           paramFileID = saveTemporal(ArrData, 'ORDENADITO_POR_PUCS.txt');
-
           paramStep++;
-
           LlamarSchedule();
+
         } else if (paramStep == 2) {
           if (paramFileID != null) {
             var strFile = ObtenerFile();
-
             ArrData = ConvertToArray(strFile);
           }
 
           ArrData = AgruparPorPucsYEntidad(ArrData);
-
           paramFileID = saveTemporal(ArrData, 'AgrupadoPUCSYENTIDAD.txt');
-
           paramStep++;
-
           LlamarSchedule();
 
         } else if (paramStep == 3) {
           if (paramFileID != null) {
             var strFile = ObtenerFile();
-
             ArrData = ConvertToArray(strFile);
           }
 
           ArrData = AgregarArregloCuatroDigitos(ArrData);
-
           paramFileID = saveTemporal(ArrData, 'TERCEROS_ORDENADOS_PUC.txt');
-
           paramStep++;
           LlamarSchedule();
 
         } else if (paramStep == 4) {
           if (paramFileID != null) {
             var strFile = ObtenerFile();
-
             ArrData = ConvertToArray(strFile);
           }
 
@@ -157,7 +146,6 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/search",
           }
 
           GeneraArchivo(ArrData);
-
           paramLastPuc++;
 
           if (paramLastPuc < 9) {
@@ -198,6 +186,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/search",
         }
 
         params['custscript_lmry_terceros_mprdc_lastpuc'] = paramLastPuc;
+        params['custscript_lmry_terceros_mprdc_adjust'] = paramAdjustment;
 
         var RedirecSchdl = task.create({
           taskType: task.TaskType.MAP_REDUCE,
@@ -1280,6 +1269,10 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/search",
         name: 'custscript_lmry_co_terce_schdl_periodfin'
       });
 
+      paramAdjustment = objContext.getParameter({
+        name: 'custscript_lmry_co_terce_schdl_adjust'
+      });
+
       if (paramLastPuc == null) {
         paramLastPuc = 1;
       }
@@ -1368,9 +1361,7 @@ define(["N/record", "N/runtime", "N/file", "N/email", "N/search",
 
           for (var i = 0; i < objResult.length; i++) {
             var columns = objResult[i].columns;
-
             var arrAuxiliar = new Array();
-
             //0. Internal Id
             if (objResult[i].getValue(columns[0]) != null && objResult[i].getValue(columns[0]) != '')
               arrAuxiliar[0] = objResult[i].getValue(columns[0]);
